@@ -580,13 +580,12 @@ function setLink(t, link){
 
 async function addCustomTask(data){
   const local = Object.assign({}, data, {id:"c"+Date.now(), createdAt:new Date().toISOString()});
+  customTasksState.unshift(local);
+  render();
   if(dbMode==="live" && customCol){
-    try{ await customCol.doc(local.id).set(local); }
-    catch(e){ console.error(e); customTasksState.unshift(local); saveLocalCustom(); render(); }
+    try{ await customCol.doc(local.id).set(local); }catch(e){ console.error(e); }
   } else {
-    customTasksState.unshift(local);
     saveLocalCustom();
-    render();
   }
 }
 
@@ -600,15 +599,16 @@ async function deleteCustomTask(taskId){
   }
 }
 
+/* Se muestra al instante y después se guarda: sin esto, en modo
+   sincronizado no aparecía nada hasta recargar la página. */
 async function addMeeting(data){
   const meeting = Object.assign({}, data, {id:"m"+Date.now(), createdAt:new Date().toISOString()});
+  meetingsState.unshift(meeting);
+  render();
   if(dbMode==="live" && meetingsCol){
-    try{ await meetingsCol.doc(meeting.id).set(meeting); }
-    catch(e){ console.error(e); meetingsState.unshift(meeting); saveLocalMeetings(); render(); }
+    try{ await meetingsCol.doc(meeting.id).set(meeting); }catch(e){ console.error(e); }
   } else {
-    meetingsState.unshift(meeting);
     saveLocalMeetings();
-    render();
   }
 }
 
@@ -624,12 +624,12 @@ async function deleteMeeting(id){
 
 async function addNote(text, author){
   const note = {id:"n"+Date.now(), text, author, createdAt:new Date().toISOString()};
+  notesState.unshift(note);
+  render();
   if(dbMode==="live" && notesCol){
-    try{ await notesCol.doc(note.id).set(note); }catch(e){ console.error(e); notesState.unshift(note); saveLocalNotes(); render(); }
+    try{ await notesCol.doc(note.id).set(note); }catch(e){ console.error(e); }
   } else {
-    notesState.unshift(note);
     saveLocalNotes();
-    render();
   }
 }
 

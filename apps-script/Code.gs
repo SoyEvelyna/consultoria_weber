@@ -64,8 +64,10 @@ function doGet(e) {
       overrides: readOverrides_(),
       notes: readSimpleRows_(SHEET_NOTES, ["id", "text", "author", "createdAt"]),
       customTasks: readSimpleRows_(SHEET_CUSTOM_TASKS,
-        ["id", "tarea", "area", "tema", "responsable", "fase", "inicio", "cierre", "estado", "obs", "link", "createdAt"]),
-      meetings: readSimpleRows_(SHEET_MEETINGS, ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"])
+        ["id", "tarea", "area", "tema", "responsable", "fase", "inicio", "cierre", "estado", "obs", "link", "createdAt"],
+        ["inicio", "cierre"]),
+      meetings: readSimpleRows_(SHEET_MEETINGS, ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"],
+        ["fecha"])
     });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err && err.message || err) });
@@ -92,7 +94,7 @@ function handleAction_(action, p) {
   switch (action) {
     case "setOverride": return setOverride_(p.taskId, p.patch || {});
     case "addNote": return addRow_(SHEET_NOTES, ["id", "text", "author", "createdAt"],
-      { id: "n" + Date.now(), text: p.text, author: p.author, createdAt: nowIso_() });
+      Object.assign({ id: "n" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteNote": return deleteRow_(SHEET_NOTES, p.id);
     case "addCustomTask": return addRow_(SHEET_CUSTOM_TASKS,
       ["id", "tarea", "area", "tema", "responsable", "fase", "inicio", "cierre", "estado", "obs", "link", "createdAt"],
@@ -283,7 +285,9 @@ function ensureSheets_() {
   });
 }
 
-function readSimpleRows_(sheetName, cols) {
+/* dateCols: columnas que Sheets puede convertir sola a tipo fecha. Se
+   normalizan a "yyyy-MM-dd", que es lo que espera la web. */
+function readSimpleRows_(sheetName, cols, dateCols) {
   var sheet = ss_().getSheetByName(sheetName);
   var values = sheet.getDataRange().getValues();
   var out = [];
@@ -291,14 +295,19 @@ function readSimpleRows_(sheetName, cols) {
     var row = values[r];
     if (!cell_(row, 0)) continue;
     var obj = {};
-    cols.forEach(function (c, i) { obj[c] = cell_(row, i); });
+    cols.forEach(function (c, i) {
+      var v = cell_(row, i);
+      if (dateCols && dateCols.indexOf(c) !== -1) v = toIsoDate_(v);
+      obj[c] = v;
+    });
     out.push(obj);
   }
   return out;
 }
 
 function readOverrides_() {
-  var rows = readSimpleRows_(SHEET_OVERRIDES, ["task_id", "estado", "link", "inicio", "cierre", "hidden", "updated_at"]);
+  var rows = readSimpleRows_(SHEET_OVERRIDES, ["task_id", "estado", "link", "inicio", "cierre", "hidden", "updated_at"],
+    ["inicio", "cierre"]);
   var out = {};
   rows.forEach(function (r) {
     out[r.task_id] = { estado: r.estado, link: r.link, inicio: r.inicio, cierre: r.cierre, hidden: r.hidden === true || r.hidden === "true", updatedAt: r.updated_at };
