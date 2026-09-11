@@ -1,9 +1,11 @@
 /**
  * Weber Tracker — backend de Google Apps Script.
  *
- * Se pega en el editor de Apps Script del Google Sheet
- * "Loopa I Weber I Plan de trabajo" (Extensiones → Apps Script) y se
- * publica como Web App. La web del tracker le habla por HTTP (fetch).
+ * Se pega en un proyecto INDEPENDIENTE de Apps Script (script.google.com),
+ * creado desde una cuenta Gmail personal con permiso de edición sobre el
+ * Sheet, y se publica como Web App. La web del tracker le habla por HTTP.
+ * Va en una cuenta personal porque el Workspace de soyevelyna.com bloquea
+ * la publicación de Web Apps por política de la organización.
  *
  * DISEÑO:
  * - Las hojas "01 I Plan de trabajo" y "02 I Proceso de trabajo" se leen
@@ -18,6 +20,13 @@
  */
 
 var ACCESS_TOKEN = "OKSiDEIeEQ55k3kCXS3cOL0f53TNBR9U";
+
+/* Id del Google Sheet "Loopa I Weber I Plan de trabajo".
+   El script es independiente (no está pegado al Sheet), así que lo abre
+   por id. La cuenta que publica el Web App necesita permiso de edición
+   sobre el Sheet — abrahanevelyn@gmail.com ya lo tiene. */
+var SHEET_ID = "1rD90bzuYCm4HBJNMYvJDe_0dEaY25ED4zIL4xYKDhd0";
+function ss_() { return SpreadsheetApp.openById(SHEET_ID); }
 
 var SHEET_ETAPA1 = "01 I Plan de trabajo";
 var SHEET_PROCESO = "02 I Proceso de trabajo";
@@ -145,7 +154,7 @@ function readSeed_() {
 }
 
 function readEtapa1_() {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_ETAPA1);
+  var sheet = ss_().getSheetByName(SHEET_ETAPA1);
   if (!sheet) throw new Error("No encuentro la hoja '" + SHEET_ETAPA1 + "'");
   var values = sheet.getDataRange().getValues();
   var headerRow = -1;
@@ -171,7 +180,7 @@ function readEtapa1_() {
 }
 
 function readProceso_() {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_PROCESO);
+  var sheet = ss_().getSheetByName(SHEET_PROCESO);
   if (!sheet) throw new Error("No encuentro la hoja '" + SHEET_PROCESO + "'");
   var values = sheet.getDataRange().getValues();
 
@@ -186,11 +195,13 @@ function readProceso_() {
   var objetivoRow = findRow(1, "OBJETIVO 1");
   var prioridadesRow = findRow(1, "PRIORIDADES");
   var iniciativasRow = findRow(1, "INICIATIVAS");
-  var pendientesRow = findRow(1, "PENDIENTES");
   var finalizadosRow = findRow(1, "FINALIZADOS");
-  if ([objetivoRow, prioridadesRow, iniciativasRow, pendientesRow, finalizadosRow].indexOf(-1) !== -1) {
-    throw new Error("No encuentro alguna de las secciones (OBJETIVO 1 / PRIORIDADES / INICIATIVAS / PENDIENTES / FINALIZADOS) en '" + SHEET_PROCESO + "'. ¿Se movieron o renombraron?");
+  if ([objetivoRow, prioridadesRow, iniciativasRow, finalizadosRow].indexOf(-1) !== -1) {
+    throw new Error("No encuentro alguna de las secciones (OBJETIVO 1 / PRIORIDADES / INICIATIVAS / FINALIZADOS) en '" + SHEET_PROCESO + "'. ¿Se movieron o renombraron?");
   }
+  // PENDIENTES es opcional: se eliminó del Sheet, pero si vuelve se lee igual.
+  var pendientesRow = findRow(1, "PENDIENTES");
+  var finIniciativas = pendientesRow !== -1 ? pendientesRow : finalizadosRow;
 
   // Objetivo: 2 filas después de "OBJETIVO 1" (la pregunta, y la respuesta)
   var objetivo = cell_(values[objetivoRow + 2], 1) || "";
@@ -208,7 +219,7 @@ function readProceso_() {
   // Iniciativas: encabezado (ÁREA..OBSERVACIONES) en columna C, 2 filas después de "INICIATIVAS"
   var iniciativasHeaderRow = iniciativasRow + 2;
   var iniciativas = [];
-  for (var ir = iniciativasHeaderRow + 1; ir < pendientesRow; ir++) {
+  for (var ir = iniciativasHeaderRow + 1; ir < finIniciativas; ir++) {
     var row = values[ir];
     var area = cell_(row, 2), tarea = cell_(row, 4);
     if (!area && !tarea) continue;
@@ -219,11 +230,13 @@ function readProceso_() {
     });
   }
 
-  // Pendientes / backlog: solo texto libre en columna E
+  // Pendientes / backlog: solo texto libre en columna E (vacío si no está la sección)
   var backlog = [];
-  for (var brow = pendientesRow + 1; brow < finalizadosRow; brow++) {
-    var txt = cell_(values[brow], 4);
-    if (txt) backlog.push(txt);
+  if (pendientesRow !== -1) {
+    for (var brow = pendientesRow + 1; brow < finalizadosRow; brow++) {
+      var txt = cell_(values[brow], 4);
+      if (txt) backlog.push(txt);
+    }
   }
 
   // Finalizados: misma estructura de columnas que iniciativas, hasta el final de la hoja
@@ -259,7 +272,7 @@ SHEET_SCHEMAS[SHEET_CUSTOM_TASKS] = ["id", "tarea", "area", "tema", "responsable
 SHEET_SCHEMAS[SHEET_MEETINGS] = ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"];
 
 function ensureSheets_() {
-  var ss = SpreadsheetApp.getActive();
+  var ss = ss_();
   Object.keys(SHEET_SCHEMAS).forEach(function (name) {
     var sheet = ss.getSheetByName(name);
     if (!sheet) {
@@ -271,7 +284,7 @@ function ensureSheets_() {
 }
 
 function readSimpleRows_(sheetName, cols) {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  var sheet = ss_().getSheetByName(sheetName);
   var values = sheet.getDataRange().getValues();
   var out = [];
   for (var r = 1; r < values.length; r++) {
@@ -302,13 +315,13 @@ function findRowIndexById_(sheet, id) {
 }
 
 function addRow_(sheetName, cols, obj) {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  var sheet = ss_().getSheetByName(sheetName);
   sheet.appendRow(cols.map(function (c) { return obj[c] === undefined ? "" : obj[c]; }));
   return obj;
 }
 
 function updateRow_(sheetName, id, patch) {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  var sheet = ss_().getSheetByName(sheetName);
   var cols = SHEET_SCHEMAS[sheetName];
   var rowIdx = findRowIndexById_(sheet, id);
   if (rowIdx === -1) throw new Error("No encuentro id " + id + " en " + sheetName);
@@ -321,14 +334,14 @@ function updateRow_(sheetName, id, patch) {
 }
 
 function deleteRow_(sheetName, id) {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  var sheet = ss_().getSheetByName(sheetName);
   var rowIdx = findRowIndexById_(sheet, id);
   if (rowIdx !== -1) sheet.deleteRow(rowIdx);
   return { id: id, deleted: rowIdx !== -1 };
 }
 
 function setOverride_(taskId, patch) {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_OVERRIDES);
+  var sheet = ss_().getSheetByName(SHEET_OVERRIDES);
   var rowIdx = findRowIndexById_(sheet, taskId);
   var updatedAt = nowIso_();
   if (rowIdx === -1) {
