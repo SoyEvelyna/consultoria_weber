@@ -41,16 +41,18 @@ a{color:inherit}
    pantalla de escritorio. */
 .cover{margin-bottom:10px}
 .cover-art{
-  position:relative;container-type:inline-size;aspect-ratio:3/1;
+  position:relative;container-type:inline-size;aspect-ratio:5/1;
+  --k:.6; /* escala del diseño de Canva (3:1) llevado a 5:1 */
+  
   background:#7EE78A;color:var(--ink);overflow:hidden;
 }
-.cover-kicker{position:absolute;left:2.256cqw;top:7.652cqw;font-size:.875cqw;font-weight:500;line-height:1;letter-spacing:.045em;text-transform:uppercase;white-space:nowrap}
-.cover-title{position:absolute;left:2.426cqw;top:8.988cqw;margin:0;font-family:"Archivo",var(--sans);font-stretch:62.5%;font-size:15.746cqw;font-weight:900;line-height:.8;letter-spacing:-.007em}
-.cover-plan{position:absolute;left:3.747cqw;top:21.824cqw;font-size:3.063cqw;font-weight:700;line-height:1;letter-spacing:-.014em}
-.cover-sub{position:absolute;left:3.746cqw;top:24.885cqw;font-size:1.934cqw;font-weight:400;line-height:1}
-.cover-logo{position:absolute;right:3.4cqw;top:2.1cqw;width:10.7cqw}
+.cover-kicker{position:absolute;left:calc(2.256cqw*var(--k));top:calc(7.652cqw*var(--k));font-size:max(9.5px,calc(.875cqw*var(--k)));font-weight:500;line-height:1;letter-spacing:.045em;text-transform:uppercase;white-space:nowrap}
+.cover-title{position:absolute;left:calc(2.426cqw*var(--k));top:calc(8.988cqw*var(--k));margin:0;font-family:"Archivo",var(--sans);font-stretch:62.5%;font-size:calc(15.746cqw*var(--k));font-weight:900;line-height:.8;letter-spacing:-.007em}
+.cover-plan{position:absolute;left:calc(3.747cqw*var(--k));top:calc(21.824cqw*var(--k));font-size:calc(3.063cqw*var(--k));font-weight:700;line-height:1;letter-spacing:-.014em}
+.cover-sub{position:absolute;left:calc(3.746cqw*var(--k));top:calc(24.885cqw*var(--k));font-size:calc(1.934cqw*var(--k));font-weight:400;line-height:1}
+.cover-logo{position:absolute;right:calc(3.4cqw*var(--k));top:calc(2.1cqw*var(--k));width:calc(10.7cqw*var(--k))}
 .cover-logo svg{display:block;width:100%;height:auto}
-.cover-dog{position:absolute;right:0;bottom:0;width:40cqw;height:auto;display:block}
+.cover-dog{position:absolute;right:0;bottom:0;width:calc(40cqw*var(--k));height:auto;display:block}
 @media (max-width:640px){
   .cover-art{aspect-ratio:auto;padding:14px 16px 0}
   .cover-kicker,.cover-title,.cover-plan,.cover-sub{position:relative;left:auto;top:auto;display:block}
