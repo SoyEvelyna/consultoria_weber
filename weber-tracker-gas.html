@@ -806,9 +806,9 @@ const state = { view:"dashboard", filters:{fase:"", estado:"", responsable:"", p
 const VIEWS = [
   {id:"dashboard", label:"Dashboard"},
   {id:"plan", label:"Plan de trabajo"},
+  {id:"finalizadas", label:"Finalizadas"},
   {id:"timeline", label:"Timeline"},
   {id:"reuniones", label:"Reuniones"},
-  {id:"pendientes", label:"Pendientes"},
   {id:"entregables", label:"Entregables"},
   {id:"notas", label:"Notas"},
 ];
@@ -864,8 +864,8 @@ function render(){
   renderTabs();
   const root = document.getElementById("view");
   root.innerHTML = "";
-  const fns = {dashboard:renderDashboard, plan:renderPlan, timeline:renderTimeline, reuniones:renderReuniones, pendientes:renderPendientes, entregables:renderEntregables, notas:renderNotas};
-  fns[state.view](root);
+  const fns = {dashboard:renderDashboard, plan:renderPlan, finalizadas:renderFinalizadas, timeline:renderTimeline, reuniones:renderReuniones, entregables:renderEntregables, notas:renderNotas};
+  (fns[state.view] || renderDashboard)(root);
 }
 
 /* =====================================================================
@@ -1072,16 +1072,30 @@ function renderPlan(root){
   root.innerHTML = `<div class="view-head">
       <div>
         <h2 class="cond">Plan de trabajo</h2>
-        <p class="sub">Todas las tareas de la Etapa 2, organizadas por fase estratégica (según el Objetivo del trimestre). Sumá lo que se agregue en cada encuentro con "+ Nueva tarea".</p>
+        <p class="sub">Lo que falta hacer o está en proceso, organizado por fase estratégica (según el Objetivo del trimestre). Al marcar una tarea como Completado pasa a Finalizadas. Sumá lo que se agregue en cada encuentro con "+ Nueva tarea".</p>
       </div>
       <div class="actions"><button class="btn-primary" id="add-task-btn">+ Nueva tarea</button></div>
     </div>`;
   root.querySelector("#add-task-btn").addEventListener("click", openAddTaskModal);
+  renderTaskGroups(root, trackedTasks().filter(t=>currentEstado(t)!=="Completado"), "No hay tareas pendientes que coincidan con estos filtros.");
+}
+
+function renderFinalizadas(root){
+  root.innerHTML = `<div class="view-head">
+      <div>
+        <h2 class="cond">Finalizadas</h2>
+        <p class="sub">Tareas completadas de la Etapa 2, organizadas por fase estratégica. Si una se reabre, cambiá su estado y vuelve al Plan de trabajo.</p>
+      </div>
+    </div>`;
+  renderTaskGroups(root, trackedTasks().filter(t=>currentEstado(t)==="Completado"), "No hay tareas finalizadas que coincidan con estos filtros.");
+}
+
+function renderTaskGroups(root, pool, emptyMsg){
   renderFilterBar(root);
-  const tasks = applyFilters(trackedTasks());
+  const tasks = applyFilters(pool);
   const countEl = document.createElement("div");
   countEl.className = "result-count";
-  countEl.textContent = tasks.length + " de " + trackedTasks().length + " tareas";
+  countEl.textContent = tasks.length + " de " + pool.length + " tareas";
   root.appendChild(countEl);
 
   const list = document.createElement("div");
@@ -1089,7 +1103,7 @@ function renderPlan(root){
   root.appendChild(list);
 
   if(tasks.length===0){
-    list.innerHTML = `<div class="empty-note">No hay tareas que coincidan con estos filtros.</div>`;
+    list.innerHTML = `<div class="empty-note">${emptyMsg}</div>`;
     return;
   }
 
@@ -1213,62 +1227,6 @@ function renderReuniones(root){
     log.appendChild(item);
   });
   root.appendChild(log);
-}
-
-/* =====================================================================
-   RENDER: PENDIENTES
-   ===================================================================== */
-function renderPendientes(root){
-  root.innerHTML = `<div class="view-head"><div>
-      <h2 class="cond">Pendientes</h2>
-      <p class="sub">Lo que está bloqueado, atrasado, o todavía no arrancó — para saber qué necesita una decisión o una acción.</p>
-    </div></div>`;
-
-  const tasks = trackedTasks();
-  const withEstado = tasks.map(t=>({t, estado:currentEstado(t)}));
-  const bloqueadas = withEstado.filter(x=>x.estado==="Bloqueado");
-  const atrasadas = withEstado.filter(x=>isOverdue(x.t,x.estado) && x.estado!=="Bloqueado");
-  const porHacerConFecha = withEstado.filter(x=>x.estado==="Por hacer" && !isOverdue(x.t,x.estado) && dueDateOf(x.t));
-
-  function section(title, list, cls){
-    const sec = document.createElement("div");
-    sec.className = "pend-section";
-    sec.innerHTML = `<h3>${title}<span class="tag-count">${list.length}</span></h3>`;
-    if(list.length===0){
-      sec.innerHTML += `<div class="empty-note">Nada por acá — todo en orden.</div>`;
-    } else {
-      list.forEach(x=>{
-        const card = document.createElement("div");
-        card.className = "pend-card" + (cls?" -"+cls:"");
-        card.innerHTML = `<div class="body">
-            <div class="tt">${x.t.tarea}</div>
-            <div class="mt">${x.t.tema || x.t.area} · ${respLabel(x.t.responsable)} · vence ${fmtDate(dueDateOf(x.t))}</div>
-          </div>`;
-        sec.appendChild(card);
-      });
-    }
-    root.appendChild(sec);
-  }
-
-  section("Bloqueadas", bloqueadas, "hazard");
-  section("Atrasadas", atrasadas, "hazard");
-  section("Por hacer, con fecha próxima", porHacerConFecha, "");
-
-  const backlogTasks = tasks.filter(t=>t.source==="backlog");
-  if(backlogTasks.length===0) return; // sin sección PENDIENTES en el Sheet, no se muestra
-  const backlogSec = document.createElement("div");
-  backlogSec.className = "pend-section";
-  backlogSec.innerHTML = `<h3>Backlog sin iniciar (sin fecha ni responsable)<span class="tag-count">${backlogTasks.length}</span></h3>`;
-  const grid = document.createElement("div");
-  grid.className = "backlog-grid";
-  backlogTasks.forEach(t=>{
-    const item = document.createElement("div");
-    item.className = "backlog-item";
-    item.innerHTML = `<div class="bl-area">${t.area}</div>${t.tarea}${t.subfase?`<span class="bl-fase">${t.subfase}</span>`:""}`;
-    grid.appendChild(item);
-  });
-  backlogSec.appendChild(grid);
-  root.appendChild(backlogSec);
 }
 
 /* =====================================================================
