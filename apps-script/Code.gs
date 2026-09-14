@@ -564,9 +564,14 @@ function addMeetingSheet_(p) {
     var cell = sheet.getRange(row, w.col);
     var copied = cell.getValue();
     if (w.value === "" && w.keepCopy) return; // sin dato: queda el valor copiado
-    cell.setValue(w.value);
-    SpreadsheetApp.flush();
-    var got = cell.getValue();
+    var got = "";
+    try {
+      cell.setValue(w.value);
+      SpreadsheetApp.flush();
+      got = cell.getValue();
+    } catch (err) {
+      got = ""; // la validación de la celda rechazó el valor (ej. Responsable: Loopa/Equipo/Weber)
+    }
     if (w.value !== "" && (got === "" || got === null)) {
       cell.setValue(w.keepCopy ? copied : "");
       perdidos.push(w.label + ": " + (w.value instanceof Date ? p.fecha : w.value));

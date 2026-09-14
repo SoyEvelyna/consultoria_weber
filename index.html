@@ -1303,8 +1303,8 @@ function renderReuniones(root){
       <div class="field"><label class="flabel">Duración</label><input type="text" id="mt-duracion" value="2 hs" placeholder="Ej: 2 hs"></div>
     </div>
     <div class="field"><label class="flabel">Responsable / participantes</label>
-      <input type="text" id="mt-responsable" list="mt-resp-list" placeholder="Ej: Eve, Ger">
-      <datalist id="mt-resp-list">${allResponsables().map(r=>`<option value="${r}">`).join("")}</datalist>
+      <input type="text" id="mt-responsable" list="mt-resp-list" value="Equipo" placeholder="Equipo, Loopa o Weber">
+      <datalist id="mt-resp-list">${Array.from(new Set(["Equipo","Loopa","Weber"].concat(allResponsables()))).map(r=>`<option value="${r}">`).join("")}</datalist>
     </div>
     <div class="field"><label class="flabel">Temas tratados / próximos pasos</label>
       <textarea id="mt-resumen" placeholder="Ej: repasamos el lanzamiento de brand, quedó pendiente confirmar fecha con el cliente…"></textarea>
