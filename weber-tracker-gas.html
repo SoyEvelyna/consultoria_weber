@@ -158,6 +158,7 @@ a{color:inherit}
   padding:13px 4px;border-bottom:1.5px solid var(--rule);
 }
 .task-row:hover{background:rgba(33,33,33,.03)}
+.task-row.-editable{cursor:pointer}
 .task-row.-overdue{background:rgba(240,62,36,.06)}
 @media (max-width:980px){
   .task-row{grid-template-columns:1fr;gap:8px;padding:14px 4px}
@@ -283,7 +284,8 @@ a{color:inherit}
 .form-error{color:var(--hazard);font-size:12.5px;font-weight:700;margin-top:10px}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:520px){.field-row{grid-template-columns:1fr}}
-.modal-actions{display:flex;gap:10px;margin-top:18px}
+.modal-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.modal-actions button{white-space:nowrap}
 .btn-secondary{
   background:var(--paper);color:var(--ink);border:2px solid var(--ink);padding:10px 20px;font-weight:700;
   text-transform:uppercase;letter-spacing:.05em;font-size:12.5px;cursor:pointer;
@@ -506,13 +508,20 @@ function rebuildTasks_(){
 }
 rebuildTasks_(); // construye TASKS a partir de RAW, incluido en este archivo
 
+/* Las tareas del Sheet editadas desde la web se guardan como copia en
+   "WebApp - Tareas nuevas" con id "x"+id original (y la original se oculta),
+   así la hoja 02 no se toca. Esas copias no llevan la etiqueta "Nueva". */
+const EDITED_PREFIX = "x";
+function isEditedCopy(id){ return String(id||"").startsWith(EDITED_PREFIX); }
 function customAsTask(doc){
+  const fase = Number(doc.fase);
   return {
     id: doc.id, source:"custom", area: doc.area || "General", tema: doc.tema || null,
     tarea: doc.tarea, responsable: doc.responsable || null,
     inicio: doc.inicio || null, tiempo: null, cierre: doc.cierre || null,
     estado: doc.estado || "Por hacer", obs: doc.obs || null, link: doc.link || null,
-    fase: doc.fase!=null ? doc.fase : 2, estadoOriginal: doc.estado || null,
+    fase: [1,2,3].includes(fase) ? fase : 2, estadoOriginal: doc.estado || null,
+    edited: isEditedCopy(doc.id),
   };
 }
 
@@ -584,8 +593,16 @@ function setLink(t, link){
   return patchSeedOverride(t.id, {link:value});
 }
 
+/* Guarda la edición de cualquier tarea. Las nuevas se actualizan en su fila;
+   las del Sheet pasan a una copia editable y la original queda oculta. */
+async function saveTaskEdits(t, fields){
+  if(t.source==="custom") return patchCustomTask(t.id, fields);
+  const copy = Object.assign({link: taskLink(t)}, fields, {id: EDITED_PREFIX+t.id});
+  await Promise.all([addCustomTask(copy), patchSeedOverride(t.id, {hidden:true})]);
+}
+
 async function addCustomTask(data){
-  const local = Object.assign({}, data, {id:"c"+Date.now(), createdAt:new Date().toISOString()});
+  const local = Object.assign({id:"c"+Date.now()}, data, {createdAt:new Date().toISOString()});
   customTasksState.unshift(local);
   render();
   if(dbMode==="live" && customCol){
@@ -1038,7 +1055,7 @@ function taskRow(t){
   row.innerHTML = `
     <div class="col-area"><span class="tk-tema">${t.area || "—"}</span></div>
     <div class="col-tema"><span class="tk-tema">${t.tema || "—"}${t.subfase?" · "+t.subfase:""}</span></div>
-    <div class="col-tarea"><span class="tk-tarea">${t.tarea}${overdue?'<span class="tk-flags"><span class="flag">Atrasada</span></span>':''}${t.source==="custom"?'<span class="custom-tag">Nueva</span>':''}${link?' 🔗':''}</span></div>
+    <div class="col-tarea"><span class="tk-tarea">${t.tarea}${overdue?'<span class="tk-flags"><span class="flag">Atrasada</span></span>':''}${t.source==="custom"&&!t.edited?'<span class="custom-tag">Nueva</span>':''}${link?' 🔗':''}</span></div>
     <div class="col-resp"><span class="tk-resp">${respLabel(t.responsable)}</span></div>
     <div class="col-dates">
       <span><b>Inicio</b> ${fmtDate(t.inicio)}</span><br>
@@ -1051,7 +1068,7 @@ function taskRow(t){
     </div>
     <div class="col-observ"><span class="tk-obs">${t.obs || "—"}</span></div>
     <div class="col-obs row-actions">
-      <button class="obs-btn" data-obs="${t.id}" aria-label="Ver detalle / agregar link">i</button>
+      <button class="obs-btn" data-obs="${t.id}" aria-label="Editar tarea" title="Editar tarea">✎</button>
     </div>
   `;
   const sel = row.querySelector("select");
@@ -1059,6 +1076,11 @@ function taskRow(t){
     setEstado(t, sel.value);
   });
   row.querySelector(".obs-btn").addEventListener("click", ()=> openDetailModal(t));
+  row.classList.add("-editable");
+  row.addEventListener("click", (e)=>{
+    if(e.target.closest("select,button,a")) return;
+    openDetailModal(t);
+  });
   return row;
 }
 
@@ -1077,8 +1099,8 @@ function taskListHead(){
 function renderPlan(root){
   root.innerHTML = `<div class="view-head">
       <div>
-        <h2 class="cond">Plan de trabajo</h2>
-        <p class="sub">Lo que falta hacer o está en proceso, organizado por fase estratégica (según el Objetivo del trimestre). Al marcar una tarea como Completado pasa a Finalizadas. Sumá lo que se agregue en cada encuentro con "+ Nueva tarea".</p>
+        <h2 class="cond">Plan de trabajo · Weber</h2>
+        <p class="sub">Lo que falta hacer o está en proceso, organizado por fase estratégica (según el Objetivo del trimestre). Tocá cualquier tarea para editarla. Al marcar una tarea como Completado pasa a Finalizadas. Sumá lo que se agregue en cada encuentro con "+ Nueva tarea".</p>
       </div>
       <div class="actions"><button class="btn-primary" id="add-task-btn">+ Nueva tarea</button></div>
     </div>`;
@@ -1367,39 +1389,55 @@ function openDetailModal(t){
   const box = document.getElementById("modal-box");
   const estado = currentEstado(t);
   const link = taskLink(t);
+  const esc = s => String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
   box.innerHTML = `
     <button class="modal-close" aria-label="Cerrar">&times;</button>
-    <h3>${t.tarea}</h3>
-    <div class="mrow"><span class="k">Fase</span><span>${FASE_META[t.fase].label}</span></div>
-    <div class="mrow"><span class="k">Área / tema</span><span>${t.area||"—"}${t.tema?" · "+t.tema:""}</span></div>
-    <div class="mrow"><span class="k">Responsable</span><span>${respLabel(t.responsable)}</span></div>
-    <div class="mrow"><span class="k">Estado</span><span>${estado}</span></div>
-    <div class="mrow"><span class="k">Entregable / obs.</span><span>${t.obs||"—"}</span></div>
-    <div class="field-row" style="margin-top:16px">
-      <div class="field"><label class="flabel">Inicio</label><input type="date" id="fecha-inicio" value="${t.inicio||""}"></div>
-      <div class="field"><label class="flabel">Cierre</label><input type="date" id="fecha-cierre" value="${t.cierre||t.tiempo||""}"></div>
+    <h3>Editar tarea</h3>
+    <div class="field"><label class="flabel">Tarea *</label><textarea id="ed-tarea" rows="2">${esc(t.tarea)}</textarea></div>
+    <div class="field-row">
+      <div class="field"><label class="flabel">Área</label><input type="text" id="ed-area" value="${esc(t.area)}"></div>
+      <div class="field"><label class="flabel">Tema</label><input type="text" id="ed-tema" value="${esc(t.tema)}"></div>
     </div>
-    <button class="btn-secondary btn-sm" id="fecha-save">Guardar fechas</button>
-    <div class="field" style="margin-top:16px">
-      <label class="flabel">Link del entregable (Drive, Docs, web…)</label>
-      <div class="link-inline">
-        <input type="url" id="link-input" placeholder="https://…" value="${link||""}">
-        <button class="btn-secondary btn-sm" id="link-save">Guardar</button>
+    <div class="field-row">
+      <div class="field"><label class="flabel">Responsable</label>
+        <input type="text" id="ed-resp" list="ed-resp-list" value="${esc(t.responsable)}" placeholder="Ej: Eve">
+        <datalist id="ed-resp-list">${allResponsables().map(r=>`<option value="${esc(r)}">`).join("")}</datalist>
       </div>
+      <div class="field"><label class="flabel">Estado</label>
+        <select id="ed-estado">${ESTADOS.map(e=>`<option value="${e}" ${e===estado?"selected":""}>${e}</option>`).join("")}</select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label class="flabel">Inicio</label><input type="date" id="ed-inicio" value="${t.inicio||""}"></div>
+      <div class="field"><label class="flabel">Cierre</label><input type="date" id="ed-cierre" value="${t.cierre||t.tiempo||""}"></div>
+    </div>
+    <div class="field"><label class="flabel">Fase</label>
+      <select id="ed-fase">${[1,2,3].map(n=>`<option value="${n}" ${n===t.fase?"selected":""}>${FASE_META[n].label}</option>`).join("")}</select>
+    </div>
+    <div class="field"><label class="flabel">Observaciones / entregable</label><textarea id="ed-obs" rows="2">${esc(t.obs)}</textarea></div>
+    <div class="field">
+      <label class="flabel">Link del entregable (Drive, Docs, web…)</label>
+      <input type="url" id="ed-link" placeholder="https://…" value="${esc(link)}">
       ${link?`<div style="margin-top:8px"><a class="entregable-link" href="${toHref(link)}" target="_blank" rel="noopener">Abrir link ↗</a></div>`:""}
     </div>
-    <div class="modal-actions"><button class="btn-danger" id="task-delete">Eliminar tarea</button></div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="ed-save">Guardar cambios</button>
+      <button class="btn-secondary" id="ed-cancel">Cancelar</button>
+      <button class="btn-danger" id="task-delete">Eliminar tarea</button>
+    </div>
   `;
   box.querySelector(".modal-close").onclick = closeModal;
-  box.querySelector("#link-save").onclick = ()=>{
-    setLink(t, box.querySelector("#link-input").value);
-    closeModal();
-  };
-  box.querySelector("#fecha-save").onclick = ()=>{
-    const inicio = box.querySelector("#fecha-inicio").value || null;
-    const cierre = box.querySelector("#fecha-cierre").value || null;
-    if(t.source==="custom") patchCustomTask(t.id, {inicio, cierre});
-    else patchSeedOverride(t.id, {inicio, cierre});
+  box.querySelector("#ed-cancel").onclick = closeModal;
+  box.querySelector("#ed-save").onclick = ()=>{
+    if(flagMissing(box, [[box.querySelector("#ed-tarea"),"el nombre de la tarea"]], box.querySelector(".modal-actions"))) return;
+    const val = id => box.querySelector(id).value.trim() || null;
+    saveTaskEdits(t, {
+      tarea: val("#ed-tarea"), area: val("#ed-area"), tema: val("#ed-tema"),
+      responsable: val("#ed-resp"), estado: box.querySelector("#ed-estado").value,
+      inicio: val("#ed-inicio"), cierre: val("#ed-cierre"),
+      fase: Number(box.querySelector("#ed-fase").value),
+      obs: val("#ed-obs"), link: val("#ed-link"),
+    });
     closeModal();
   };
   box.querySelector("#task-delete").onclick = ()=>{
