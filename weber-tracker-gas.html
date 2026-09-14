@@ -36,32 +36,25 @@ a{color:inherit}
 @media (max-width:720px){ #app{padding:14px 14px 60px} }
 
 /* ===== PORTADA =====
-   Medidas tomadas del diseño de Canva (2400×800). Las unidades cqw escalan
-   todo en proporción al ancho de la portada, así se ve igual en cualquier
-   pantalla de escritorio. */
+   Medidas tomadas del diseño de Canva (3000×358). Las unidades cqw escalan
+   todo en proporción al ancho de la portada. */
 .cover{margin-bottom:10px}
 .cover-art{
-  position:relative;container-type:inline-size;aspect-ratio:5/1;
-  --k:.6; /* escala del diseño de Canva (3:1) llevado a 5:1 */
-  
+  position:relative;container-type:inline-size;aspect-ratio:3000/358;
   background:#7EE78A;color:var(--ink);overflow:hidden;
 }
-.cover-kicker{position:absolute;left:calc(2.256cqw*var(--k));top:calc(7.652cqw*var(--k));font-size:max(9.5px,calc(.875cqw*var(--k)));font-weight:500;line-height:1;letter-spacing:.045em;text-transform:uppercase;white-space:nowrap}
-.cover-title{position:absolute;left:calc(2.426cqw*var(--k));top:calc(8.988cqw*var(--k));margin:0;font-family:"Archivo",var(--sans);font-stretch:62.5%;font-size:calc(15.746cqw*var(--k));font-weight:900;line-height:.8;letter-spacing:-.007em}
-.cover-plan{position:absolute;left:calc(3.747cqw*var(--k));top:calc(21.824cqw*var(--k));font-size:calc(3.063cqw*var(--k));font-weight:700;line-height:1;letter-spacing:-.014em}
-.cover-sub{position:absolute;left:calc(3.746cqw*var(--k));top:calc(24.885cqw*var(--k));font-size:calc(1.934cqw*var(--k));font-weight:400;line-height:1}
-.cover-logo{position:absolute;right:calc(3.4cqw*var(--k));top:calc(2.1cqw*var(--k));width:calc(10.7cqw*var(--k))}
+.cover-dog{position:absolute;left:0;bottom:0;width:18.667cqw;height:auto;display:block}
+.cover-title{position:absolute;left:17.066cqw;top:3.22cqw;margin:0;font-family:"Archivo",var(--sans);font-stretch:75%;font-size:5.184cqw;font-weight:900;line-height:.8;letter-spacing:-.006em;white-space:nowrap}
+.cover-sub{position:absolute;left:17.196cqw;top:7.492cqw;font-size:2cqw;font-weight:400;line-height:1;white-space:nowrap}
+.cover-logo{position:absolute;right:3.833cqw;top:4.2cqw;width:12.467cqw}
 .cover-logo svg{display:block;width:100%;height:auto}
-.cover-dog{position:absolute;right:0;bottom:0;width:calc(40cqw*var(--k));height:auto;display:block}
 @media (max-width:640px){
-  .cover-art{aspect-ratio:auto;padding:14px 16px 0}
-  .cover-kicker,.cover-title,.cover-plan,.cover-sub{position:relative;left:auto;top:auto;display:block}
-  .cover-kicker{font-size:9px;white-space:normal;max-width:62%;margin-top:34px}
-  .cover-title{font-size:25cqw;line-height:.9;margin-top:6px}
-  .cover-plan{font-size:19px;margin-top:8px}
-  .cover-sub{font-size:13px;margin-top:4px}
-  .cover-logo{right:16px;top:14px;width:88px}
-  .cover-dog{position:relative;width:62%;margin:10px 0 0 auto}
+  .cover-art{aspect-ratio:auto;min-height:104px;padding:36px 14px 14px 132px}
+  .cover-dog{width:auto;height:92px}
+  .cover-title,.cover-sub{position:relative;left:auto;top:auto;display:block;white-space:normal}
+  .cover-title{font-size:28px;line-height:.9}
+  .cover-sub{font-size:13px;margin-top:5px}
+  .cover-logo{right:14px;top:12px;width:70px}
 }
 .cover-meta{display:flex;justify-content:flex-end;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:6px}
 .sync-chip{display:flex;align-items:center;gap:7px;font-size:var(--micro);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
@@ -331,9 +324,8 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
 <div id="app">
   <header class="cover">
     <div class="cover-art">
-      <span class="cover-kicker">Acompañamiento I Consultoría Estratégica</span>
-      <h1 class="cover-title">WEBER,</h1>
-      <p class="cover-plan">Plan de acción</p>
+      <img class="cover-dog" src="img/portada-perro.jpg" alt="" width="560" height="358">
+      <h1 class="cover-title">Plan de acción</h1>
       <p class="cover-sub">Tablero de seguimiento de trabajo</p>
       <div class="cover-logo" role="img" aria-label="Evelyna">
         <svg viewBox="0 0 318 91" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
@@ -347,7 +339,6 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
         <path d="M221.051 29.7302L221.149 29.8378C221.207 29.8993 221.262 29.9643 221.313 30.0326C221.998 31.0731 222.471 32.238 222.707 33.4612C223.027 35.45 223.162 37.4642 223.112 39.478V42.9117V57.6359V58.6301C223.163 60.6454 223.029 62.6612 222.712 64.652C222.475 65.8755 221.999 67.0404 221.313 68.0807C220.981 68.5445 220.59 68.963 220.149 69.326H241.5C241.06 68.963 240.669 68.5445 240.337 68.0807C239.651 67.0419 239.176 65.8788 238.938 64.6572C238.62 62.6663 238.486 60.6506 238.538 58.6353V38.2018C238.537 36.949 238.892 35.7216 239.561 34.6628C240.231 33.6039 241.188 32.757 242.32 32.2209C244.304 31.3087 246.164 31.155 247.835 31.9955C248.531 32.3351 249.13 32.8444 249.577 33.4766C250.063 34.1445 250.39 34.9137 250.536 35.7265C250.712 36.943 250.787 38.1721 250.761 39.4011V58.6507C250.816 60.666 250.682 62.6821 250.361 64.6725C250.127 65.8944 249.653 67.0578 248.967 68.096C248.635 68.5611 248.242 68.9799 247.799 69.3414H269.083C268.642 68.9816 268.251 68.5645 267.92 68.1011C267.232 67.0635 266.757 65.9 266.521 64.6777C266.203 62.6852 266.069 60.6677 266.121 58.6507V36.4696C266.18 34.5002 266.008 32.5308 265.608 30.6015C265.291 29.2916 264.691 28.067 263.85 27.014C262.441 25.2868 260.032 23.2266 256.552 23.2266C245.877 23.2266 239.722 29.6789 238.769 31.2728L238.569 31.6111L238.538 23.2727C237.431 23.6622 236.447 23.9902 235.617 24.2567C234.787 24.5232 233.931 24.7692 233.054 25.0203L230.43 25.7891L227.186 26.7321C225.966 27.0857 224.859 27.3829 223.891 27.6341C223.317 27.7724 222.743 27.9108 222.071 28.0594L221.277 28.3362L220.047 28.7615C220.417 29.0456 220.754 29.3705 221.051 29.7302Z" fill="currentColor"/>
       </svg>
       </div>
-      <img class="cover-dog" src="img/weber-portada-perro.jpg" alt="" width="960" height="650">
     </div>
   </header>
   <div class="cover-meta">
