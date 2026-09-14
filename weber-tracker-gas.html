@@ -286,6 +286,8 @@ a{color:inherit}
   width:100%;border:2px solid var(--ink);padding:9px 10px;font-size:13.5px;background:var(--paper);font-family:inherit;
 }
 .field textarea{resize:vertical;min-height:64px}
+.-missing{border-color:var(--hazard)!important;box-shadow:0 0 0 1px var(--hazard)}
+.form-error{color:var(--hazard);font-size:12.5px;font-weight:700;margin-top:10px}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:520px){.field-row{grid-template-columns:1fr}}
 .modal-actions{display:flex;gap:10px;margin-top:18px}
@@ -1179,6 +1181,23 @@ function renderTimeline(root){
 /* =====================================================================
    RENDER: REUNIONES
    ===================================================================== */
+/* Marca en rojo los campos obligatorios vacíos y dice cuáles faltan.
+   Antes el botón no hacía nada y parecía roto. Devuelve true si falta alguno. */
+function flagMissing(container, fields, anchor){
+  container.querySelectorAll(".form-error").forEach(e=>e.remove());
+  fields.forEach(([el])=>el.classList.toggle("-missing", !el.value.trim()));
+  const missing = fields.filter(([el])=>!el.value.trim());
+  if(!missing.length) return false;
+  const msg = document.createElement("div");
+  msg.className = "form-error";
+  msg.setAttribute("role", "alert");
+  msg.textContent = "Completá " + missing.map(([,label])=>label).join(" y ") + " para guardar.";
+  anchor.insertAdjacentElement("afterend", msg);
+  missing[0][0].focus();
+  missing.forEach(([el])=>el.addEventListener("input", ()=>el.classList.remove("-missing"), {once:true}));
+  return true;
+}
+
 function renderReuniones(root){
   root.innerHTML = `<div class="view-head"><div>
       <h2 class="cond">Reuniones</h2>
@@ -1209,7 +1228,7 @@ function renderReuniones(root){
     const duracion = compose.querySelector("#mt-duracion").value.trim();
     const responsable = compose.querySelector("#mt-responsable").value.trim();
     const resumen = compose.querySelector("#mt-resumen").value.trim();
-    if(!fecha || !resumen) return;
+    if(flagMissing(compose, [[compose.querySelector("#mt-fecha"),"la fecha"],[compose.querySelector("#mt-resumen"),"los temas tratados"]], compose.querySelector("#mt-submit"))) return;
     addMeeting({fecha, duracion, responsable, resumen});
     compose.querySelector("#mt-resumen").value = "";
   });
@@ -1326,7 +1345,7 @@ function renderNotas(root){
     const ta = right.querySelector("#note-text");
     const author = right.querySelector("#note-author").value;
     const text = ta.value.trim();
-    if(!text) return;
+    if(flagMissing(right, [[ta,"el texto de la nota"]], right.querySelector(".note-compose .row"))) return;
     addNote(text, author);
     ta.value = "";
   });
@@ -1438,7 +1457,7 @@ function openAddTaskModal(){
   box.querySelector("#nt-cancel").onclick = closeModal;
   box.querySelector("#nt-submit").onclick = ()=>{
     const tarea = box.querySelector("#nt-tarea").value.trim();
-    if(!tarea) return;
+    if(flagMissing(box, [[box.querySelector("#nt-tarea"),"el nombre de la tarea"]], box.querySelector(".modal-actions"))) return;
     addCustomTask({
       tarea,
       tema: box.querySelector("#nt-tema").value.trim() || null,
