@@ -412,6 +412,7 @@ function normEstado(raw){
   if(s.startsWith("actualiz")) return "En proceso";
   if(s.startsWith("revis")) return "En revisión";
   if(s.startsWith("propuesta")) return "En revisión";
+  if(s.startsWith("bloq")) return "Bloqueado";
   return "Por hacer";
 }
 function classifyFase(t){
@@ -520,7 +521,7 @@ function customAsTask(doc){
     tarea: doc.tarea, responsable: doc.responsable || null,
     inicio: doc.inicio || null, tiempo: null, cierre: doc.cierre || null,
     estado: doc.estado || "Por hacer", obs: doc.obs || null, link: doc.link || null,
-    fase: [1,2,3].includes(fase) ? fase : 2, estadoOriginal: doc.estado || null,
+    fase: [1,2,3].includes(fase) ? fase : classifyFase(doc), estadoOriginal: doc.estado || null,
     edited: isEditedCopy(doc.id),
   };
 }
@@ -583,8 +584,48 @@ async function patchCustomTask(taskId, patch){
   }
 }
 
+/* Con el Sheet conectado, las tareas se escriben directo en su fila de "02"
+   y las reuniones en la tabla de "01". Se muestra el cambio al instante,
+   se guarda (en orden) y al terminar se vuelve a leer el Sheet. */
+const ESTADO_A_SHEET = {"Por hacer":"Pendiente","En proceso":"En proceso","En revisión":"Revisar","Completado":"Finalizada","Bloqueado":"Bloqueado"};
+function sheetLive(){ return dbMode==="live" && !!gasData; }
+
+let sheetQueue = Promise.resolve();
+let sheetPending = 0;
+async function sheetWrite(action, payload){
+  sheetPending++;
+  const job = sheetQueue.then(()=>gasWrite_(action, payload)).catch(e=>{
+    console.error(e);
+    alert("No se pudo guardar en el Sheet: " + e.message);
+  });
+  sheetQueue = job;
+  await job;
+  sheetPending--;
+  if(sheetPending===0){ try{ await gasRefresh_(); }catch(e){ console.error(e); } }
+}
+
+function sheetTaskEdit(t, fields){
+  const local = TASKS.find(x=>x.id===t.id);
+  if(local){
+    Object.assign(local, fields);
+    if(fields.estado) local.estadoOriginal = ESTADO_A_SHEET[fields.estado] || fields.estado;
+  }
+  const ov = overridesState[t.id];
+  if(ov){ delete ov.estado; delete ov.inicio; delete ov.cierre; }
+  if(fields.link!==undefined) overridesState[t.id] = Object.assign({}, overridesState[t.id], {link: fields.link});
+  render();
+  return sheetWrite("updateTask", {id: t.id, fields});
+}
+
+function sheetDeleteTask(t){
+  overridesState[t.id] = Object.assign({}, overridesState[t.id], {hidden:true});
+  render();
+  return sheetWrite("deleteTask", {id: t.id});
+}
+
 function setEstado(t, estado){
   if(t.source==="custom") return patchCustomTask(t.id, {estado});
+  if(sheetLive()) return sheetTaskEdit(t, {estado});
   return patchSeedOverride(t.id, {estado});
 }
 function setLink(t, link){
@@ -593,15 +634,23 @@ function setLink(t, link){
   return patchSeedOverride(t.id, {link:value});
 }
 
-/* Guarda la edición de cualquier tarea. Las nuevas se actualizan en su fila;
-   las del Sheet pasan a una copia editable y la original queda oculta. */
+/* Guarda la edición de cualquier tarea (solo los campos que cambiaron).
+   Sin Sheet conectado, las tareas base pasan a una copia local editable. */
 async function saveTaskEdits(t, fields){
   if(t.source==="custom") return patchCustomTask(t.id, fields);
-  const copy = Object.assign({link: taskLink(t)}, fields, {id: EDITED_PREFIX+t.id});
+  if(sheetLive()) return sheetTaskEdit(t, fields);
+  const base = {tarea:t.tarea, area:t.area, tema:t.tema, responsable:t.responsable, inicio:t.inicio,
+    cierre:t.cierre||t.tiempo, estado:currentEstado(t), obs:t.obs, link:taskLink(t), fase:t.fase};
+  const copy = Object.assign(base, fields, {id: EDITED_PREFIX+t.id});
   await Promise.all([addCustomTask(copy), patchSeedOverride(t.id, {hidden:true})]);
 }
 
 async function addCustomTask(data){
+  if(sheetLive()){
+    customTasksState.unshift(Object.assign({}, data, {id:"tmp"+Date.now()}));
+    render();
+    return sheetWrite("addTask", {fields: data});
+  }
   const local = Object.assign({id:"c"+Date.now()}, data, {createdAt:new Date().toISOString()});
   customTasksState.unshift(local);
   render();
@@ -625,6 +674,13 @@ async function deleteCustomTask(taskId){
 /* Se muestra al instante y después se guarda: sin esto, en modo
    sincronizado no aparecía nada hasta recargar la página. */
 async function addMeeting(data){
+  if(sheetLive()){
+    RAW.etapa1.push({fecha:data.fecha, hs:data.duracion, tarea:data.tarea||"Encuentro I Estado del proceso de trabajo",
+      responsable:data.responsable, estado:"Finalizado", resultado:data.resumen, obs:null});
+    rebuildTasks_();
+    render();
+    return sheetWrite("addMeetingSheet", data);
+  }
   const meeting = Object.assign({}, data, {id:"m"+Date.now(), createdAt:new Date().toISOString()});
   meetingsState.unshift(meeting);
   render();
@@ -643,6 +699,13 @@ async function deleteMeeting(id){
   } else {
     saveLocalMeetings();
   }
+}
+
+function deleteSheetMeeting(e){
+  RAW.etapa1 = RAW.etapa1.filter(x=>x!==e);
+  rebuildTasks_();
+  render();
+  return sheetWrite("deleteMeetingSheet", {fecha:e.fecha, tarea:e.tarea, resultado:e.resultado});
 }
 
 async function addNote(text, author){
@@ -690,6 +753,17 @@ async function gasRead_(){
   const json = await res.json();
   if(!json.ok) throw new Error(json.error || "error leyendo el Sheet");
   return json;
+}
+
+/* Vuelve a leer el Sheet después de guardar, para quedar igual que la hoja. */
+async function gasRefresh_(){
+  gasData = await gasRead_();
+  gasApplySeed_(gasData.seed);
+  overridesState = gasData.overrides || {};
+  notesState = gasData.notes || [];
+  customTasksState = (gasData.customTasks || []).sort((a,b)=> (b.createdAt||"").localeCompare(a.createdAt||""));
+  meetingsState = gasData.meetings || [];
+  render();
 }
 
 /* Content-Type por defecto (text/plain) a propósito: evita el preflight
@@ -843,10 +917,11 @@ function trackedTasks(){
     .filter(t=>{ const ov = overridesState[t.id]; return !(ov && ov.hidden); })
     .map(t=>{
       const ov = overridesState[t.id];
-      if(!ov || (ov.inicio===undefined && ov.cierre===undefined)) return t;
+      // Un override vacío (null) no pisa las fechas que vienen del Sheet.
+      if(!ov || (ov.inicio==null && ov.cierre==null)) return t;
       const merged = Object.assign({}, t);
-      if(ov.inicio!==undefined) merged.inicio = ov.inicio;
-      if(ov.cierre!==undefined) merged.cierre = ov.cierre;
+      if(ov.inicio!=null) merged.inicio = ov.inicio;
+      if(ov.cierre!=null) merged.cierre = ov.cierre;
       return merged;
     });
   return seed.concat(customTasksState.map(customAsTask));
@@ -1222,6 +1297,7 @@ function renderReuniones(root){
   compose.className = "meeting-compose";
   compose.innerHTML = `
     <label class="micro" style="display:block;margin-bottom:10px">Registrar un encuentro</label>
+    <div class="field"><label class="flabel">Título</label><input type="text" id="mt-tarea" value="Encuentro I Estado del proceso de trabajo"></div>
     <div class="field-row">
       <div class="field"><label class="flabel">Fecha</label><input type="date" id="mt-fecha" value="${today}"></div>
       <div class="field"><label class="flabel">Duración</label><input type="text" id="mt-duracion" value="2 hs" placeholder="Ej: 2 hs"></div>
@@ -1242,12 +1318,15 @@ function renderReuniones(root){
     const responsable = compose.querySelector("#mt-responsable").value.trim();
     const resumen = compose.querySelector("#mt-resumen").value.trim();
     if(flagMissing(compose, [[compose.querySelector("#mt-fecha"),"la fecha"],[compose.querySelector("#mt-resumen"),"los temas tratados"]], compose.querySelector("#mt-submit"))) return;
-    addMeeting({fecha, duracion, responsable, resumen});
+    const tarea = compose.querySelector("#mt-tarea").value.trim();
+    addMeeting({fecha, duracion, responsable, resumen, tarea});
     compose.querySelector("#mt-resumen").value = "";
   });
 
   const combined = [];
-  RAW.etapa1.forEach(e=> combined.push({fecha:e.fecha, responsable:e.responsable, duracion:null, resumen:e.tarea+(e.resultado?" — "+e.resultado:""), historical:true}));
+  const live = sheetLive();
+  const hsLabel = hs => hs ? (/hs/i.test(String(hs)) ? hs : hs+" hs") : null;
+  RAW.etapa1.forEach(e=> combined.push({fecha:e.fecha, responsable:e.responsable, duracion:hsLabel(e.hs), resumen:e.tarea+(e.resultado?" — "+e.resultado:""), historical:!live, src:e}));
   meetingsState.forEach(m=> combined.push(Object.assign({historical:false}, m)));
   combined.sort((a,b)=> (b.fecha||"").localeCompare(a.fecha||"") || (b.createdAt||"").localeCompare(a.createdAt||""));
 
@@ -1266,7 +1345,8 @@ function renderReuniones(root){
     item.querySelector(".mbody").textContent = m.resumen || "";
     if(!m.historical){
       item.querySelector(".row-delete").addEventListener("click", ()=>{
-        if(confirm("¿Eliminar esta reunión?")) deleteMeeting(m.id);
+        if(!confirm("¿Eliminar esta reunión?")) return;
+        if(m.src) deleteSheetMeeting(m.src); else deleteMeeting(m.id);
       });
     }
     log.appendChild(item);
@@ -1411,9 +1491,6 @@ function openDetailModal(t){
       <div class="field"><label class="flabel">Inicio</label><input type="date" id="ed-inicio" value="${t.inicio||""}"></div>
       <div class="field"><label class="flabel">Cierre</label><input type="date" id="ed-cierre" value="${t.cierre||t.tiempo||""}"></div>
     </div>
-    <div class="field"><label class="flabel">Fase</label>
-      <select id="ed-fase">${[1,2,3].map(n=>`<option value="${n}" ${n===t.fase?"selected":""}>${FASE_META[n].label}</option>`).join("")}</select>
-    </div>
     <div class="field"><label class="flabel">Observaciones / entregable</label><textarea id="ed-obs" rows="2">${esc(t.obs)}</textarea></div>
     <div class="field">
       <label class="flabel">Link del entregable (Drive, Docs, web…)</label>
@@ -1431,18 +1508,23 @@ function openDetailModal(t){
   box.querySelector("#ed-save").onclick = ()=>{
     if(flagMissing(box, [[box.querySelector("#ed-tarea"),"el nombre de la tarea"]], box.querySelector(".modal-actions"))) return;
     const val = id => box.querySelector(id).value.trim() || null;
-    saveTaskEdits(t, {
-      tarea: val("#ed-tarea"), area: val("#ed-area"), tema: val("#ed-tema"),
-      responsable: val("#ed-resp"), estado: box.querySelector("#ed-estado").value,
-      inicio: val("#ed-inicio"), cierre: val("#ed-cierre"),
-      fase: Number(box.querySelector("#ed-fase").value),
-      obs: val("#ed-obs"), link: val("#ed-link"),
+    const orig = {tarea:t.tarea, area:t.area, tema:t.tema, responsable:t.responsable, inicio:t.inicio, cierre:t.cierre||t.tiempo, obs:t.obs, link};
+    const inputs = {tarea:"#ed-tarea", area:"#ed-area", tema:"#ed-tema", responsable:"#ed-resp", inicio:"#ed-inicio", cierre:"#ed-cierre", obs:"#ed-obs", link:"#ed-link"};
+    const fields = {};
+    Object.keys(inputs).forEach(k=>{
+      const before = orig[k]==null ? null : (String(orig[k]).trim() || null);
+      const after = val(inputs[k]);
+      if(after!==before) fields[k] = after;
     });
+    const nuevoEstado = box.querySelector("#ed-estado").value;
+    if(nuevoEstado!==estado) fields.estado = nuevoEstado;
+    if(Object.keys(fields).length) saveTaskEdits(t, fields);
     closeModal();
   };
   box.querySelector("#task-delete").onclick = ()=>{
     if(!confirm("¿Eliminar esta tarea?")) return;
     if(t.source==="custom") deleteCustomTask(t.id);
+    else if(sheetLive()) sheetDeleteTask(t);
     else patchSeedOverride(t.id, {hidden:true});
     closeModal();
   };
@@ -1457,27 +1539,24 @@ function openAddTaskModal(){
     <h3>Nueva tarea</h3>
     <div class="field"><label class="flabel">Tarea *</label><input type="text" id="nt-tarea" placeholder="Ej: Armar propuesta de precios para nicho X"></div>
     <div class="field-row">
-      <div class="field"><label class="flabel">Área / tema</label><input type="text" id="nt-tema" placeholder="Ej: Comercial"></div>
+      <div class="field"><label class="flabel">Área</label><input type="text" id="nt-area" placeholder="Ej: Marketing"></div>
+      <div class="field"><label class="flabel">Tema</label><input type="text" id="nt-tema" placeholder="Ej: Redes Sociales"></div>
+    </div>
+    <div class="field-row">
       <div class="field"><label class="flabel">Responsable</label>
         <input type="text" id="nt-resp" list="nt-resp-list" placeholder="Ej: Eve">
         <datalist id="nt-resp-list">${allResponsables().map(r=>`<option value="${r}">`).join("")}</datalist>
+      </div>
+      <div class="field"><label class="flabel">Estado</label>
+        <select id="nt-estado">${ESTADOS.map(e=>`<option value="${e}">${e}</option>`).join("")}</select>
       </div>
     </div>
     <div class="field-row">
       <div class="field"><label class="flabel">Inicio</label><input type="date" id="nt-inicio"></div>
       <div class="field"><label class="flabel">Cierre</label><input type="date" id="nt-cierre"></div>
     </div>
-    <div class="field"><label class="flabel">Fase</label>
-      <select id="nt-fase">
-        <option value="1">${FASE_META[1].label}</option>
-        <option value="2" selected>${FASE_META[2].label}</option>
-        <option value="3">${FASE_META[3].label}</option>
-      </select>
-    </div>
+    <div class="field"><label class="flabel">Observaciones (opcional)</label><input type="text" id="nt-obs"></div>
     <div class="field"><label class="flabel">Link (opcional)</label><input type="url" id="nt-link" placeholder="https://…"></div>
-    <div class="field"><label class="flabel">Estado inicial</label>
-      <select id="nt-estado">${ESTADOS.map(e=>`<option value="${e}">${e}</option>`).join("")}</select>
-    </div>
     <div class="modal-actions">
       <button class="btn-primary" id="nt-submit">Agregar tarea</button>
       <button class="btn-secondary" id="nt-cancel">Cancelar</button>
@@ -1490,9 +1569,10 @@ function openAddTaskModal(){
     if(flagMissing(box, [[box.querySelector("#nt-tarea"),"el nombre de la tarea"]], box.querySelector(".modal-actions"))) return;
     addCustomTask({
       tarea,
+      area: box.querySelector("#nt-area").value.trim() || null,
       tema: box.querySelector("#nt-tema").value.trim() || null,
       responsable: box.querySelector("#nt-resp").value.trim() || null,
-      fase: Number(box.querySelector("#nt-fase").value),
+      obs: box.querySelector("#nt-obs").value.trim() || null,
       inicio: box.querySelector("#nt-inicio").value || null,
       cierre: box.querySelector("#nt-cierre").value || null,
       link: box.querySelector("#nt-link").value.trim() || null,

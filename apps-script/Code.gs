@@ -8,13 +8,13 @@
  * la publicación de Web Apps por política de la organización.
  *
  * DISEÑO:
- * - Las hojas "01 I Plan de trabajo" y "02 I Proceso de trabajo" se leen
- *   TAL CUAL están, en cada pedido — nunca se escriben. Podés seguir
- *   editándolas a mano y descargando el Excel sin que la web interfiera.
- * - Los cambios que se hacen desde la web (estado/fecha/link de una tarea,
- *   tareas nuevas, notas, reuniones) se guardan en pestañas nuevas que este
- *   script crea solo si no existen: "WebApp - Overrides", "WebApp - Notas",
- *   "WebApp - Tareas nuevas", "WebApp - Reuniones".
+ * - "01 I Plan de trabajo" y "02 I Proceso de trabajo" son la base: la web
+ *   las lee en cada pedido y ESCRIBE ahí mismo. Las tareas nuevas o editadas
+ *   van a su fila de 02 (INICIATIVAS, o FINALIZADOS al completarse) y las
+ *   reuniones se agregan a la tabla de 01. Se puede seguir editando a mano.
+ * - Lo que no tiene columna en 01/02 (link de la tarea, notas) se guarda en
+ *   "WebApp - Overrides" y "WebApp - Notas". "WebApp - Tareas nuevas" y
+ *   "WebApp - Reuniones" quedan de la versión anterior.
  * - Autenticación: un token compartido (ver ACCESS_TOKEN abajo), el mismo
  *   que se configura en la web. No hay login individual.
  */
@@ -66,8 +66,7 @@ function doGet(e) {
       customTasks: readSimpleRows_(SHEET_CUSTOM_TASKS,
         ["id", "tarea", "area", "tema", "responsable", "fase", "inicio", "cierre", "estado", "obs", "link", "createdAt"],
         ["inicio", "cierre"]),
-      meetings: readSimpleRows_(SHEET_MEETINGS, ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"],
-        ["fecha"])
+      meetings: [] // las reuniones ahora viven en la tabla de "01" (seed.etapa1)
     });
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err && err.message || err) });
@@ -104,6 +103,12 @@ function handleAction_(action, p) {
     case "addMeeting": return addRow_(SHEET_MEETINGS, ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"],
       Object.assign({ id: "m" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteMeeting": return deleteRow_(SHEET_MEETINGS, p.id);
+    case "updateTask": return updateTask_(p.id, p.fields || {});
+    case "addTask": return addTask_(p.fields || {});
+    case "deleteTask": return deleteTask_(p.id);
+    case "addMeetingSheet": return addMeetingSheet_(p);
+    case "deleteMeetingSheet": return deleteMeetingSheet_(p);
+    case "migrarWebApp": return migrarWebAppAlSheet_();
     default: throw new Error("acción POST no soportada: " + action);
   }
 }
@@ -171,6 +176,7 @@ function readEtapa1_() {
     if (!fecha) break; // fin de la tabla
     out.push({
       fecha: toIsoDate_(fecha),
+      hs: cell_(row, 1),
       tarea: cell_(row, 2),
       responsable: cell_(row, 3),
       estado: cell_(row, 4),
@@ -367,4 +373,237 @@ function setOverride_(taskId, patch) {
     sheet.getRange(rowIdx, cols.indexOf("updated_at") + 1).setValue(updatedAt);
   }
   return { taskId: taskId, patch: patch };
+}
+
+/* =====================================================================
+   ESCRITURA DIRECTA EN "01 I Plan de trabajo" Y "02 I Proceso de trabajo"
+   ===================================================================== */
+
+var ESTADO_A_SHEET = { "Por hacer": "Pendiente", "En proceso": "En proceso", "En revisión": "Revisar", "Completado": "Finalizada", "Bloqueado": "Bloqueado" };
+var COLS_02 = { area: 3, tema: 4, tarea: 5, responsable: 6, inicio: 7, cierre: 9, estado: 10, obs: 11 };
+var TITULO_REUNION = "Encuentro I Estado del proceso de trabajo";
+
+/* Mismo id que calcula la web: hash del contenido + contador de repetidas. */
+function hashId_(str) {
+  var h = 5381;
+  for (var i = 0; i < str.length; i++) h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  return "t" + h.toString(36);
+}
+
+/* Ubica cada tarea de 02 (id, fila, sección) con el mismo recorrido que readProceso_. */
+function procesoLayout_() {
+  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+  var values = sheet.getDataRange().getValues();
+  function findRow(text) {
+    for (var i = 0; i < values.length; i++) {
+      if (String(values[i][1] || "").trim().toUpperCase() === text) return i;
+    }
+    return -1;
+  }
+  var iniciativasRow = findRow("INICIATIVAS"), finalizadosRow = findRow("FINALIZADOS"), pendientesRow = findRow("PENDIENTES");
+  if (iniciativasRow === -1 || finalizadosRow === -1) {
+    throw new Error("No encuentro INICIATIVAS / FINALIZADOS en '" + SHEET_PROCESO + "'");
+  }
+  var finIniciativas = pendientesRow !== -1 ? pendientesRow : finalizadosRow;
+  var tasks = [], seen = {};
+  function scan(fromRow, toRow, source) {
+    var last = fromRow;
+    for (var r = fromRow + 1; r < toRow; r++) {
+      var row = values[r];
+      var area = cell_(row, 2), tarea = cell_(row, 4);
+      if (!area && !tarea) continue;
+      var key = [source, area || "", cell_(row, 3) || "", tarea || ""].join("|");
+      seen[key] = (seen[key] || 0) + 1;
+      tasks.push({ id: hashId_(key + "#" + seen[key]), row: r + 1, source: source });
+      last = r;
+    }
+    return last + 1; // 1-based
+  }
+  var lastIniciativaRow = scan(iniciativasRow + 2, finIniciativas, "iniciativa");
+  var lastFinalizadoRow = scan(finalizadosRow, values.length, "finalizado");
+  return { sheet: sheet, tasks: tasks, lastIniciativaRow: lastIniciativaRow, lastFinalizadoRow: lastFinalizadoRow };
+}
+
+function findTask_(layout, id) {
+  for (var i = 0; i < layout.tasks.length; i++) if (layout.tasks[i].id === id) return layout.tasks[i];
+  return null;
+}
+
+function idAtRow_(row) {
+  var L = procesoLayout_();
+  for (var i = 0; i < L.tasks.length; i++) if (L.tasks[i].row === row) return L.tasks[i].id;
+  return null;
+}
+
+/* "yyyy-mm-dd" -> fecha a mediodía, para que no se corra de día por zona horaria. */
+function toSheetDate_(iso) {
+  if (!iso) return "";
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+}
+
+function writeTaskCells_(sheet, row, fields) {
+  Object.keys(COLS_02).forEach(function (k) {
+    if (fields[k] === undefined) return;
+    var v = fields[k];
+    if (k === "inicio" || k === "cierre") v = toSheetDate_(v);
+    else if (k === "estado") v = ESTADO_A_SHEET[v] || v || "";
+    else if (v === null) v = "";
+    sheet.getRange(row, COLS_02[k]).setValue(v);
+  });
+}
+
+/* Mueve una fila (valores y formato) debajo de afterRow. Devuelve su fila final. */
+function moveRow_(sheet, fromRow, afterRow) {
+  sheet.insertRowAfter(afterRow);
+  var to = afterRow + 1;
+  if (fromRow >= to) fromRow++;
+  var width = sheet.getMaxColumns();
+  sheet.getRange(fromRow, 1, 1, width).copyTo(sheet.getRange(to, 1, 1, width));
+  sheet.getRange(to, 2).setValue(""); // el n° de FINALIZADOS no aplica a la fila movida
+  sheet.deleteRow(fromRow);
+  return fromRow < to ? to - 1 : to;
+}
+
+/* El id cambia si cambia el texto o la sección: el link guardado pasa al id nuevo.
+   Estado y fechas ya quedaron en 02, así que se limpian del override. */
+function migrateOverride_(oldId, newId, fields) {
+  var sheet = ss_().getSheetByName(SHEET_OVERRIDES);
+  var cols = SHEET_SCHEMAS[SHEET_OVERRIDES];
+  var rowIdx = findRowIndexById_(sheet, oldId);
+  if (rowIdx !== -1) {
+    var link = sheet.getRange(rowIdx, cols.indexOf("link") + 1).getValue();
+    if (fields.link !== undefined) link = fields.link || "";
+    sheet.getRange(rowIdx, 1, 1, cols.length).setValues([[newId, "", link, "", "", false, nowIso_()]]);
+  } else if (fields.link) {
+    setOverride_(newId, { link: fields.link });
+  }
+}
+
+function updateTask_(id, fields) {
+  var L = procesoLayout_();
+  var t = findTask_(L, id);
+  if (!t) throw new Error("No encuentro esa tarea en '" + SHEET_PROCESO + "'. Puede haber cambiado en el Sheet: recargá la página.");
+  writeTaskCells_(L.sheet, t.row, fields);
+  var row = t.row;
+  if (fields.estado !== undefined) {
+    var done = fields.estado === "Completado";
+    if (done && t.source === "iniciativa") row = moveRow_(L.sheet, row, L.lastFinalizadoRow);
+    else if (!done && t.source === "finalizado") row = moveRow_(L.sheet, row, L.lastIniciativaRow);
+  }
+  var newId = idAtRow_(row);
+  migrateOverride_(id, newId, fields);
+  return { id: newId };
+}
+
+function addTask_(fields) {
+  var L = procesoLayout_();
+  var after = fields.estado === "Completado" ? L.lastFinalizadoRow : L.lastIniciativaRow;
+  L.sheet.insertRowAfter(after);
+  var row = after + 1;
+  L.sheet.getRange(row, 1, 1, L.sheet.getMaxColumns()).clearContent();
+  writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields));
+  var newId = idAtRow_(row);
+  if (fields.link) setOverride_(newId, { link: fields.link });
+  return { id: newId };
+}
+
+function deleteTask_(id) {
+  var L = procesoLayout_();
+  var t = findTask_(L, id);
+  if (!t) throw new Error("No encuentro esa tarea en '" + SHEET_PROCESO + "'. Recargá la página.");
+  L.sheet.deleteRow(t.row);
+  deleteRow_(SHEET_OVERRIDES, id);
+  return { deleted: id };
+}
+
+function etapa1Table_() {
+  var sheet = ss_().getSheetByName(SHEET_ETAPA1);
+  var values = sheet.getDataRange().getValues();
+  var header = -1;
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === "Fecha") { header = i; break; }
+  }
+  if (header === -1) throw new Error("No encuentro la tabla de reuniones en '" + SHEET_ETAPA1 + "'");
+  var last = header;
+  while (last + 1 < values.length && cell_(values[last + 1], 0)) last++;
+  return { sheet: sheet, values: values, header: header, last: last };
+}
+
+/* "2 hs" -> 2 ; "2.30" se deja como texto, igual que en la hoja. */
+function horas_(duracion) {
+  var m = String(duracion || "").match(/\d+(?:[.,]\d+)?/);
+  if (!m) return "";
+  return /[.,]/.test(m[0]) ? m[0] : Number(m[0]);
+}
+
+/* La tabla de 01 tiene desplegables/chips (Responsable, Estado...) que
+   descartan en silencio lo que no está en su lista. Por eso se copia la
+   última reunión (formato y desplegables incluidos), se escribe celda por
+   celda y se verifica: si una celda rechaza el valor, queda el valor válido
+   copiado y el dato va a Observaciones para no perderlo. */
+function addMeetingSheet_(p) {
+  var T = etapa1Table_();
+  var sheet = T.sheet;
+  var src = T.last + 1; // última reunión (1-based)
+  sheet.insertRowAfter(src);
+  var row = src + 1;
+  sheet.getRange(src, 1, 1, 7).copyTo(sheet.getRange(row, 1, 1, 7));
+
+  var wanted = [
+    { col: 1, label: "Fecha", value: toSheetDate_(p.fecha), keepCopy: false },
+    { col: 2, label: "Hs", value: horas_(p.duracion), keepCopy: false },
+    { col: 3, label: "Tarea", value: p.tarea || TITULO_REUNION, keepCopy: false },
+    { col: 4, label: "Responsable", value: p.responsable || "", keepCopy: true },
+    { col: 5, label: "Estado", value: "Finalizado", keepCopy: true },
+    { col: 6, label: "Resultado", value: p.resumen || "", keepCopy: false }
+  ];
+  var perdidos = [];
+  wanted.forEach(function (w) {
+    var cell = sheet.getRange(row, w.col);
+    var copied = cell.getValue();
+    if (w.value === "" && w.keepCopy) return; // sin dato: queda el valor copiado
+    cell.setValue(w.value);
+    SpreadsheetApp.flush();
+    var got = cell.getValue();
+    if (w.value !== "" && (got === "" || got === null)) {
+      cell.setValue(w.keepCopy ? copied : "");
+      perdidos.push(w.label + ": " + (w.value instanceof Date ? p.fecha : w.value));
+    }
+  });
+  sheet.getRange(row, 7).setValue(perdidos.join(" | "));
+  SpreadsheetApp.flush();
+  return { row: row, guardado: sheet.getRange(row, 1, 1, 7).getDisplayValues()[0], enObservaciones: perdidos };
+}
+
+function deleteMeetingSheet_(p) {
+  var T = etapa1Table_();
+  for (var r = T.header + 1; r <= T.last; r++) {
+    var row = T.values[r];
+    if (toIsoDate_(row[0]) === p.fecha &&
+        String(cell_(row, 2) || "") === String(p.tarea || "") &&
+        String(cell_(row, 5) || "") === String(p.resultado || "")) {
+      T.sheet.deleteRow(r + 1);
+      return { deleted: true };
+    }
+  }
+  throw new Error("No encuentro esa reunión en '" + SHEET_ETAPA1 + "'. Recargá la página.");
+}
+
+/* Pasa a 02 las tareas que quedaron en "WebApp - Tareas nuevas" (versión anterior). */
+function migrarWebAppAlSheet_() {
+  var rows = readSimpleRows_(SHEET_CUSTOM_TASKS, SHEET_SCHEMAS[SHEET_CUSTOM_TASKS], ["inicio", "cierre"]);
+  var log = [];
+  rows.forEach(function (c) {
+    var fields = { tarea: c.tarea, area: c.area, tema: c.tema, responsable: c.responsable,
+      inicio: c.inicio, cierre: c.cierre, estado: c.estado || "Por hacer", obs: c.obs };
+    if (c.link) fields.link = c.link;
+    var id = String(c.id), res;
+    if (id.charAt(0) === "x" && findTask_(procesoLayout_(), id.slice(1))) res = updateTask_(id.slice(1), fields);
+    else res = addTask_(fields);
+    deleteRow_(SHEET_CUSTOM_TASKS, id);
+    log.push(id + " -> " + res.id);
+  });
+  return log;
 }
