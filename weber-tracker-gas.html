@@ -1464,14 +1464,15 @@ function openAddTaskModal(){
       </div>
     </div>
     <div class="field-row">
-      <div class="field"><label class="flabel">Fase</label>
-        <select id="nt-fase">
-          <option value="1">${FASE_META[1].label}</option>
-          <option value="2" selected>${FASE_META[2].label}</option>
-          <option value="3">${FASE_META[3].label}</option>
-        </select>
-      </div>
-      <div class="field"><label class="flabel">Fecha de cierre</label><input type="date" id="nt-cierre"></div>
+      <div class="field"><label class="flabel">Inicio</label><input type="date" id="nt-inicio"></div>
+      <div class="field"><label class="flabel">Cierre</label><input type="date" id="nt-cierre"></div>
+    </div>
+    <div class="field"><label class="flabel">Fase</label>
+      <select id="nt-fase">
+        <option value="1">${FASE_META[1].label}</option>
+        <option value="2" selected>${FASE_META[2].label}</option>
+        <option value="3">${FASE_META[3].label}</option>
+      </select>
     </div>
     <div class="field"><label class="flabel">Link (opcional)</label><input type="url" id="nt-link" placeholder="https://…"></div>
     <div class="field"><label class="flabel">Estado inicial</label>
@@ -1492,6 +1493,7 @@ function openAddTaskModal(){
       tema: box.querySelector("#nt-tema").value.trim() || null,
       responsable: box.querySelector("#nt-resp").value.trim() || null,
       fase: Number(box.querySelector("#nt-fase").value),
+      inicio: box.querySelector("#nt-inicio").value || null,
       cierre: box.querySelector("#nt-cierre").value || null,
       link: box.querySelector("#nt-link").value.trim() || null,
       estado: box.querySelector("#nt-estado").value,
