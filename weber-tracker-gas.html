@@ -151,7 +151,7 @@ a{color:inherit}
 /* ===== TASK LIST ===== */
 .task-list{display:flex;flex-direction:column;border-top:2px solid var(--ink)}
 .task-row{
-  display:grid;grid-template-columns:1.15fr 1.9fr 108px 140px 152px 34px;gap:14px;align-items:center;
+  display:grid;grid-template-columns:.8fr .95fr 1.9fr 96px 112px 150px 1.25fr 34px;gap:14px;align-items:center;
   padding:13px 4px;border-bottom:1.5px solid var(--rule);
 }
 .task-row:hover{background:rgba(33,33,33,.03)}
@@ -171,6 +171,8 @@ a{color:inherit}
 .col-resp{display:flex;align-items:center;gap:8px}
 .col-resp .rname{font-size:11.5px;color:var(--muted);font-weight:600}
 .col-dates{font-size:11.5px;color:var(--muted);line-height:1.5;font-weight:500}
+.tk-resp{font-size:13px;font-weight:600}
+.tk-obs{font-size:12px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
 .col-dates b{color:var(--ink);font-weight:700}
 .urg-dot{width:9px;height:9px;flex:none;background:var(--muted);margin-right:6px;display:inline-block}
 .urg-Alta{background:var(--hazard)}
@@ -1030,11 +1032,10 @@ function taskRow(t){
   row.className = "task-row" + (overdue ? " -overdue" : "");
   const stClass = "st-"+estado.replace(/\s+/g,"-").replace("ó","o");
   row.innerHTML = `
-    <div class="col-tema"><span class="tk-tema">${t.tema || t.area || "General"}${t.subfase?" · "+t.subfase:""}</span></div>
+    <div class="col-area"><span class="tk-tema">${t.area || "—"}</span></div>
+    <div class="col-tema"><span class="tk-tema">${t.tema || "—"}${t.subfase?" · "+t.subfase:""}</span></div>
     <div class="col-tarea"><span class="tk-tarea">${t.tarea}${overdue?'<span class="tk-flags"><span class="flag">Atrasada</span></span>':''}${t.source==="custom"?'<span class="custom-tag">Nueva</span>':''}${link?' 🔗':''}</span></div>
-    <div class="col-resp">
-      <span class="resp-chip" title="${respLabel(t.responsable)}">${initials(t.responsable)}</span>
-    </div>
+    <div class="col-resp"><span class="tk-resp">${respLabel(t.responsable)}</span></div>
     <div class="col-dates">
       <span><b>Inicio</b> ${fmtDate(t.inicio)}</span><br>
       <span><b>Cierre</b> ${fmtDate(t.cierre || t.tiempo)}</span>
@@ -1044,6 +1045,7 @@ function taskRow(t){
         ${ESTADOS.map(e=>`<option value="${e}" ${e===estado?"selected":""}>${e}</option>`).join("")}
       </select>
     </div>
+    <div class="col-observ"><span class="tk-obs">${t.obs || "—"}</span></div>
     <div class="col-obs row-actions">
       <button class="obs-btn" data-obs="${t.id}" aria-label="Ver detalle / agregar link">i</button>
     </div>
@@ -1062,8 +1064,8 @@ function taskListHead(){
   head.style.borderBottom = "2px solid var(--ink)";
   head.style.paddingBottom = "8px";
   head.innerHTML = `
-    <div class="micro">Tema</div><div class="micro">Tarea</div><div class="micro">Resp.</div>
-    <div class="micro">Fechas</div><div class="micro">Estado</div><div></div>
+    <div class="micro">Área</div><div class="micro">Tema</div><div class="micro">Tarea</div><div class="micro">Responsable</div>
+    <div class="micro">Fechas</div><div class="micro">Estado</div><div class="micro">Observaciones</div><div></div>
   `;
   return head;
 }
