@@ -380,8 +380,8 @@ function setOverride_(taskId, patch) {
    ESCRITURA DIRECTA EN "01 I Plan de trabajo" Y "02 I Proceso de trabajo"
    ===================================================================== */
 
-var ESTADO_A_SHEET = { "Por hacer": "Atrasada", "En proceso": "Proceso", "En revisión": "Revisar", "Testear": "Testear", "Completado": "Finalizada" };
-var ESTADOS_SHEET = ["Atrasada", "Proceso", "Revisar", "Testear", "Finalizada"];
+var ESTADO_A_SHEET = { "Por hacer": "Pendiente", "En proceso": "Proceso", "En revisión": "Revisar", "Testear": "Testear", "Completado": "Finalizada" };
+var ESTADOS_SHEET = ["Pendiente", "Proceso", "Revisar", "Testear", "Finalizada"];
 var COLS_02 = { area: 3, tema: 4, tarea: 5, responsable: 6, inicio: 7, cierre: 9, estado: 10, obs: 11 };
 var TITULO_REUNION = "Encuentro I Estado del proceso de trabajo";
 
@@ -615,14 +615,14 @@ function migrarWebAppAlSheet_() {
   return log;
 }
 
-/* Estado viejo de la hoja -> estado nuevo (Atrasada, Proceso, Revisar, Testear, Finalizada). */
+/* Estado viejo de la hoja -> estado nuevo (Pendiente, Proceso, Revisar, Testear, Finalizada). */
 function estadoNuevo_(v) {
   var s = String(v || "").trim().toLowerCase();
   if (s.indexOf("final") === 0) return "Finalizada";
   if (s.indexOf("en proceso") === 0 || s.indexOf("proceso") === 0 || s.indexOf("actualiz") === 0) return "Proceso";
   if (s.indexOf("revis") === 0 || s.indexOf("propuesta") === 0) return "Revisar";
   if (s.indexOf("test") === 0) return "Testear";
-  return "Atrasada";
+  return "Pendiente";
 }
 
 /* Una vez: pasa todas las tareas de 02 a los estados nuevos y, si la columna
