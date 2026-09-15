@@ -103,6 +103,7 @@ function handleAction_(action, p) {
     case "addMeeting": return addRow_(SHEET_MEETINGS, ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"],
       Object.assign({ id: "m" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteMeeting": return deleteRow_(SHEET_MEETINGS, p.id);
+    case "migrarEstados": return migrarEstados_();
     case "updateTask": return updateTask_(p.id, p.fields || {});
     case "addTask": return addTask_(p.fields || {});
     case "deleteTask": return deleteTask_(p.id);
@@ -379,7 +380,8 @@ function setOverride_(taskId, patch) {
    ESCRITURA DIRECTA EN "01 I Plan de trabajo" Y "02 I Proceso de trabajo"
    ===================================================================== */
 
-var ESTADO_A_SHEET = { "Por hacer": "Pendiente", "En proceso": "En proceso", "En revisión": "Revisar", "Completado": "Finalizada", "Bloqueado": "Bloqueado" };
+var ESTADO_A_SHEET = { "Por hacer": "Atrasada", "En proceso": "Proceso", "En revisión": "Revisar", "Testear": "Testear", "Completado": "Finalizada" };
+var ESTADOS_SHEET = ["Atrasada", "Proceso", "Revisar", "Testear", "Finalizada"];
 var COLS_02 = { area: 3, tema: 4, tarea: 5, responsable: 6, inicio: 7, cierre: 9, estado: 10, obs: 11 };
 var TITULO_REUNION = "Encuentro I Estado del proceso de trabajo";
 
@@ -611,4 +613,33 @@ function migrarWebAppAlSheet_() {
     log.push(id + " -> " + res.id);
   });
   return log;
+}
+
+/* Estado viejo de la hoja -> estado nuevo (Atrasada, Proceso, Revisar, Testear, Finalizada). */
+function estadoNuevo_(v) {
+  var s = String(v || "").trim().toLowerCase();
+  if (s.indexOf("final") === 0) return "Finalizada";
+  if (s.indexOf("en proceso") === 0 || s.indexOf("proceso") === 0 || s.indexOf("actualiz") === 0) return "Proceso";
+  if (s.indexOf("revis") === 0 || s.indexOf("propuesta") === 0) return "Revisar";
+  if (s.indexOf("test") === 0) return "Testear";
+  return "Atrasada";
+}
+
+/* Una vez: pasa todas las tareas de 02 a los estados nuevos y, si la columna
+   ESTADO tiene desplegable, lo deja con esas 5 opciones. */
+function migrarEstados_() {
+  var L = procesoLayout_();
+  var col = COLS_02.estado;
+  var cambios = {};
+  L.tasks.forEach(function (t) {
+    var cell = L.sheet.getRange(t.row, col);
+    var antes = String(cell.getValue() || "");
+    var despues = estadoNuevo_(antes);
+    var dv = cell.getDataValidation();
+    if (dv) cell.setDataValidation(dv.copy().requireValueInList(ESTADOS_SHEET, true).build());
+    if (antes !== despues) cell.setValue(despues);
+    var k = (antes || "(vacío)") + " -> " + despues;
+    cambios[k] = (cambios[k] || 0) + 1;
+  });
+  return cambios;
 }
