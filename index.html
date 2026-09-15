@@ -431,8 +431,41 @@ function initials(r){
 function respLabel(r){ return r || "Sin asignar"; }
 function allResponsables(){
   const set = new Set(RESPONSABLES);
+  TASKS.forEach(t=>{ if(t.responsable && t.source!=="etapa1") set.add(t.responsable); });
   customTasksState.forEach(c=>{ if(c.responsable) set.add(c.responsable); });
   return Array.from(set);
+}
+function escHtml(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+/* Opciones de un <select>; si el valor actual no está en la lista, se agrega. */
+function optionsHtml(list, current, emptyLabel){
+  const vals = list.slice();
+  if(current && !vals.includes(current)) vals.unshift(current);
+  return `<option value="">${emptyLabel||"—"}</option>` +
+    vals.map(v=>`<option value="${escHtml(v)}" ${v===current?"selected":""}>${escHtml(v)}</option>`).join("");
+}
+/* Responsable como desplegable (antes era texto con sugerencias y solo mostraba
+   nombres parecidos a lo ya escrito). "+ Agregar responsable…" suma un nombre
+   nuevo, que se guarda en la tarea al guardar. */
+const NUEVO_RESP = "__nuevo__";
+function respSelectHtml(current){
+  return optionsHtml(allResponsables(), current, "Sin asignar") + `<option value="${NUEVO_RESP}">+ Agregar responsable…</option>`;
+}
+function wireRespSelect(sel){
+  if(!sel) return;
+  let previo = sel.value;
+  sel.addEventListener("change", ()=>{
+    if(sel.value!==NUEVO_RESP){ previo = sel.value; return; }
+    const nombre = (prompt("Nombre del nuevo responsable:") || "").trim();
+    if(!nombre){ sel.value = previo; return; }
+    if(![...sel.options].some(o=>o.value===nombre)){
+      const opt = document.createElement("option");
+      opt.value = nombre; opt.textContent = nombre;
+      sel.insertBefore(opt, sel.querySelector(`option[value="${NUEVO_RESP}"]`));
+    }
+    if(!RESPONSABLES.includes(nombre)) RESPONSABLES.push(nombre);
+    sel.value = nombre;
+    previo = nombre;
+  });
 }
 function toHref(s){ const v=s.trim(); return /^https?:\/\//i.test(v) ? v : "https://"+v; }
 /* Cada tarea admite hasta 3 links. Se guardan juntos en el campo "link",
@@ -1627,8 +1660,7 @@ function openDetailModal(t){
     </div>
     <div class="field-row">
       <div class="field"><label class="flabel">Responsable</label>
-        <input type="text" id="ed-resp" list="ed-resp-list" value="${esc(t.responsable)}" placeholder="Ej: Eve">
-        <datalist id="ed-resp-list">${allResponsables().map(r=>`<option value="${esc(r)}">`).join("")}</datalist>
+        <select id="ed-resp">${respSelectHtml(t.responsable)}</select>
       </div>
       <div class="field"><label class="flabel">Estado</label>
         <select id="ed-estado">${ESTADOS.map(e=>`<option value="${e}" ${e===estado?"selected":""}>${estadoLabel(e)}</option>`).join("")}</select>
@@ -1653,6 +1685,7 @@ function openDetailModal(t){
   `;
   box.querySelector(".modal-close").onclick = closeModal;
   box.querySelector("#ed-cancel").onclick = closeModal;
+  wireRespSelect(box.querySelector("#ed-resp"));
   /* Duplicar: abre "Nueva tarea" con los datos de esta, para editar la copia antes de guardarla. */
   box.querySelector("#task-duplicate").onclick = ()=>{
     openAddTaskModal({
@@ -1704,8 +1737,7 @@ function openAddTaskModal(prefill){
     </div>
     <div class="field-row">
       <div class="field"><label class="flabel">Responsable</label>
-        <input type="text" id="nt-resp" list="nt-resp-list" placeholder="Ej: Eve">
-        <datalist id="nt-resp-list">${allResponsables().map(r=>`<option value="${r}">`).join("")}</datalist>
+        <select id="nt-resp">${respSelectHtml(copia ? copia.responsable : "")}</select>
       </div>
       <div class="field"><label class="flabel">Estado</label>
         <select id="nt-estado">${ESTADOS.map(e=>`<option value="${e}">${estadoLabel(e)}</option>`).join("")}</select>
@@ -1739,6 +1771,7 @@ function openAddTaskModal(prefill){
   }
   box.querySelector(".modal-close").onclick = closeModal;
   box.querySelector("#nt-cancel").onclick = closeModal;
+  wireRespSelect(box.querySelector("#nt-resp"));
   box.querySelector("#nt-submit").onclick = ()=>{
     const tarea = box.querySelector("#nt-tarea").value.trim();
     if(flagMissing(box, [[box.querySelector("#nt-tarea"),"el nombre de la tarea"]], box.querySelector(".modal-actions"))) return;
