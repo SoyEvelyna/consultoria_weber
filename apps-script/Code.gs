@@ -110,6 +110,7 @@ function handleAction_(action, p) {
     case "addMeetingSheet": return addMeetingSheet_(p);
     case "deleteMeetingSheet": return deleteMeetingSheet_(p);
     case "migrarWebApp": return migrarWebAppAlSheet_();
+    case "probarResumen": return probarResumen_();
     default: throw new Error("acción POST no soportada: " + action);
   }
 }
@@ -642,4 +643,183 @@ function migrarEstados_() {
     cambios[k] = (cambios[k] || 0) + 1;
   });
   return cambios;
+}
+
+/* =====================================================================
+   RESUMEN DIARIO POR EMAIL (18 h)
+   Compara las tareas y reuniones de hoy con la "foto" guardada en el último
+   resumen y manda un email con lo que cambió (desde la web o a mano en la
+   Hoja). Si no cambió nada, no manda nada.
+   El envío corre en un proyecto aparte de hola@soyevelyna.com (sin Web App),
+   porque el remitente es la cuenta que autoriza el script.
+   ===================================================================== */
+
+var RESUMEN_DESTINATARIOS = [
+  "hola@soyevelyna.com",
+  "gweber@webersi.com.ar",
+  "marketingdigital.push@gmail.com",
+  "juliana@loopa.io",
+  "leo@loopa.io"
+];
+var RESUMEN_PRUEBA = "hola@soyevelyna.com";
+var RESUMEN_ZONA = "America/Argentina/Buenos_Aires";
+var RESUMEN_HORA = 18;
+var TABLERO_URL = "https://soyevelyna.github.io/consultoria_weber/";
+var SHEET_RESUMEN = "WebApp - Resumen";
+
+/* Para ejecutar a mano desde el editor (el menú no muestra funciones con "_"). */
+function quienEnvia() { Logger.log(JSON.stringify({ efectivo: Session.getEffectiveUser().getEmail(), activo: Session.getActiveUser().getEmail() })); }
+function probarResumenAhora() { Logger.log(JSON.stringify(probarResumen_())); }
+function activarResumenDiario() { Logger.log(JSON.stringify(activarResumen_())); }
+function desactivarResumenDiario() { Logger.log(JSON.stringify(desactivarResumen_())); }
+
+function fotoActual_() {
+  var seed = readSeed_();
+  function tarea(t, seccion) {
+    return { seccion: seccion, area: t.area, tema: t.tema, tarea: t.tarea, responsable: t.responsable,
+      inicio: t.inicio, cierre: t.cierre, estado: t.estado, obs: t.obs };
+  }
+  var tareas = seed.iniciativas.map(function (t) { return tarea(t, "iniciativas"); })
+    .concat(seed.finalizados.map(function (t) { return tarea(t, "finalizados"); }));
+  return {
+    fecha: nowIso_(),
+    tareas: tareas,
+    reuniones: seed.etapa1.map(function (m) {
+      return { fecha: m.fecha, tarea: m.tarea, responsable: m.responsable, resultado: m.resultado };
+    })
+  };
+}
+
+function leerFoto_() {
+  var sh = ss_().getSheetByName(SHEET_RESUMEN);
+  if (!sh) return null;
+  var v = sh.getRange(1, 1).getValue();
+  try { return v ? JSON.parse(v) : null; } catch (err) { return null; }
+}
+
+function guardarFoto_(foto) {
+  var texto = JSON.stringify(foto);
+  if (texto.length > 49000) throw new Error("La foto del resumen es demasiado grande para una celda");
+  var ss = ss_();
+  var sh = ss.getSheetByName(SHEET_RESUMEN) || ss.insertSheet(SHEET_RESUMEN);
+  sh.getRange(1, 1).setValue(texto);
+  sh.getRange(2, 1).setValue("Foto que usa el resumen diario por email. No editar. Última: " + (foto.fecha || nowIso_()));
+}
+
+function claveTarea_(t) { return String(t.tarea || "").trim().toLowerCase(); }
+
+function difResumen_(antes, ahora) {
+  var r = { nuevas: [], finalizadas: [], estados: [], otros: [], eliminadas: [], reuniones: [] };
+  var mapaAntes = {};
+  (antes.tareas || []).forEach(function (t) { mapaAntes[claveTarea_(t)] = t; });
+  var vistas = {};
+  var campos = [["responsable", "Responsable"], ["inicio", "Inicio"], ["cierre", "Cierre"],
+    ["area", "Área"], ["tema", "Tema"], ["obs", "Observaciones"]];
+  (ahora.tareas || []).forEach(function (t) {
+    var k = claveTarea_(t);
+    vistas[k] = true;
+    var p = mapaAntes[k];
+    if (!p) { r.nuevas.push(t); return; }
+    var eAntes = String(p.estado || ""), eAhora = String(t.estado || "");
+    var pasoAFinalizados = p.seccion !== "finalizados" && t.seccion === "finalizados";
+    if (pasoAFinalizados || (eAntes !== eAhora && /^final/i.test(eAhora))) r.finalizadas.push(t);
+    else if (eAntes !== eAhora) r.estados.push({ t: t, de: eAntes || "(sin estado)", a: eAhora || "(sin estado)" });
+    var cambios = [];
+    campos.forEach(function (c) {
+      var a = p[c[0]] == null ? "" : String(p[c[0]]);
+      var b = t[c[0]] == null ? "" : String(t[c[0]]);
+      if (a !== b) cambios.push(c[1] + ": " + (a || "—") + " → " + (b || "—"));
+    });
+    if (cambios.length) r.otros.push({ t: t, cambios: cambios });
+  });
+  (antes.tareas || []).forEach(function (p) { if (!vistas[claveTarea_(p)]) r.eliminadas.push(p); });
+  var reunAntes = {};
+  (antes.reuniones || []).forEach(function (m) { reunAntes[m.fecha + "|" + m.tarea] = true; });
+  (ahora.reuniones || []).forEach(function (m) { if (!reunAntes[m.fecha + "|" + m.tarea]) r.reuniones.push(m); });
+  r.total = r.nuevas.length + r.finalizadas.length + r.estados.length + r.otros.length + r.eliminadas.length + r.reuniones.length;
+  return r;
+}
+
+function htmlResumen_(r, hoy, prueba) {
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function corto(s) { s = String(s == null ? "" : s); return s.length > 110 ? s.slice(0, 107) + "…" : s; }
+  function linea(t, extra) {
+    return "<li style='margin-bottom:6px'><b>" + esc(t.tarea) + "</b>" + (t.responsable ? " · " + esc(t.responsable) : "") +
+      (extra ? "<br><span style='color:#555'>" + extra + "</span>" : "") + "</li>";
+  }
+  function seccion(titulo, color, items) {
+    if (!items.length) return "";
+    return "<h3 style='margin:20px 0 6px;font-family:Arial,sans-serif;font-size:16px;color:" + color + "'>" + titulo + " (" + items.length + ")</h3>" +
+      "<ul style='margin:0;padding-left:18px;font-family:Arial,sans-serif;font-size:14px;line-height:1.45'>" + items.join("") + "</ul>";
+  }
+  var html = "<div style='max-width:640px'>";
+  if (prueba) {
+    html += "<p style='background:#FFF3CD;padding:8px 10px;font-family:Arial,sans-serif;font-size:13px'>Email de prueba: así se va a ver el resumen diario de las 18 h. Por ahora solo te llega a vos.</p>";
+  }
+  html += "<h2 style='font-family:Arial,sans-serif;margin:0 0 4px'>Weber · Resumen del " + esc(hoy) + "</h2>";
+  html += "<p style='font-family:Arial,sans-serif;color:#555;margin:0'>Cambios en el tablero desde el último resumen.</p>";
+  html += seccion("Tareas nuevas", "#212121", r.nuevas.map(function (t) { return linea(t, esc(t.estado || "")); }));
+  html += seccion("Finalizadas", "#23914A", r.finalizadas.map(function (t) { return linea(t); }));
+  html += seccion("Cambios de estado", "#7447B8", r.estados.map(function (x) { return linea(x.t, esc(x.de) + " → " + esc(x.a)); }));
+  html += seccion("Otros cambios", "#1F7FB5", r.otros.map(function (x) {
+    return linea(x.t, x.cambios.map(function (c) { return esc(corto(c)); }).join("<br>"));
+  }));
+  html += seccion("Eliminadas", "#B9282D", r.eliminadas.map(function (t) { return linea(t); }));
+  html += seccion("Reuniones nuevas", "#212121", r.reuniones.map(function (m) {
+    return "<li style='margin-bottom:6px'><b>" + esc(m.tarea) + "</b> · " + esc(m.fecha) +
+      (m.resultado ? "<br><span style='color:#555'>" + esc(corto(m.resultado)) + "</span>" : "") + "</li>";
+  }));
+  if (!r.total) html += "<p style='font-family:Arial,sans-serif;margin-top:16px'>No hubo cambios.</p>";
+  html += "<p style='font-family:Arial,sans-serif;margin-top:24px'><a href='" + TABLERO_URL + "'>Abrir el tablero de Weber</a></p></div>";
+  return html;
+}
+
+/* Lo ejecuta el activador diario (18 h). También guarda la foto nueva. */
+function enviarResumenDiario() {
+  var ahora = fotoActual_();
+  var antes = leerFoto_();
+  if (!antes) { guardarFoto_(ahora); return { enviado: false, motivo: "primera foto guardada" }; }
+  var r = difResumen_(antes, ahora);
+  if (r.total) {
+    var hoy = Utilities.formatDate(new Date(), RESUMEN_ZONA, "dd/MM/yyyy");
+    MailApp.sendEmail({
+      to: RESUMEN_DESTINATARIOS.join(","),
+      subject: "WEBER I Tablero de trabajo: Resumen del día " + hoy + " (" + r.total + (r.total === 1 ? " cambio)" : " cambios)"),
+      htmlBody: htmlResumen_(r, hoy, false),
+      name: "WEBER I Tablero de trabajo"
+    });
+  }
+  guardarFoto_(ahora);
+  return { enviado: !!r.total, cambios: r.total };
+}
+
+/* Prueba: manda el resumen solo a RESUMEN_PRUEBA, sin tocar la foto guardada. */
+function probarResumen_() {
+  var ahora = fotoActual_();
+  var antes = leerFoto_() || { tareas: [], reuniones: [] };
+  var r = difResumen_(antes, ahora);
+  var hoy = Utilities.formatDate(new Date(), RESUMEN_ZONA, "dd/MM/yyyy");
+  MailApp.sendEmail({
+    to: RESUMEN_PRUEBA,
+    subject: "[Prueba] WEBER I Tablero de trabajo: Resumen del día " + hoy + " (" + r.total + (r.total === 1 ? " cambio)" : " cambios)"),
+    htmlBody: htmlResumen_(r, hoy, true),
+    name: "WEBER I Tablero de trabajo"
+  });
+  return { enviadoA: RESUMEN_PRUEBA, cambios: r.total, cuotaRestante: MailApp.getRemainingDailyQuota() };
+}
+
+/* Crea (o recrea) el activador diario y arranca desde la foto de ahora. */
+function activarResumen_() {
+  desactivarResumen_();
+  ScriptApp.newTrigger("enviarResumenDiario").timeBased().everyDays(1).atHour(RESUMEN_HORA).inTimezone(RESUMEN_ZONA).create();
+  guardarFoto_(fotoActual_());
+  return { activado: true, hora: RESUMEN_HORA, zona: RESUMEN_ZONA, destinatarios: RESUMEN_DESTINATARIOS };
+}
+
+function desactivarResumen_() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function (tr) {
+    if (tr.getHandlerFunction() === "enviarResumenDiario") { ScriptApp.deleteTrigger(tr); n++; }
+  });
+  return { desactivados: n };
 }
