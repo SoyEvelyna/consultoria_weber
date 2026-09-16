@@ -19,6 +19,13 @@
  *   que se configura en la web. No hay login individual.
  */
 
+/* Para ejecutar a mano desde el editor (el menú no muestra funciones con "_").
+   Van primero porque el editor corre la primera función del archivo. */
+function probarResumenAhora() { Logger.log(JSON.stringify(probarResumen_())); }
+function quienEnvia() { Logger.log(JSON.stringify({ efectivo: Session.getEffectiveUser().getEmail(), activo: Session.getActiveUser().getEmail() })); }
+function activarResumenDiario() { Logger.log(JSON.stringify(activarResumen_())); }
+function desactivarResumenDiario() { Logger.log(JSON.stringify(desactivarResumen_())); }
+
 var ACCESS_TOKEN = "OKSiDEIeEQ55k3kCXS3cOL0f53TNBR9U";
 
 /* Id del Google Sheet "Loopa I Weber I Plan de trabajo".
@@ -666,12 +673,6 @@ var RESUMEN_ZONA = "America/Argentina/Buenos_Aires";
 var RESUMEN_HORA = 18;
 var TABLERO_URL = "https://soyevelyna.github.io/consultoria_weber/";
 var SHEET_RESUMEN = "WebApp - Resumen";
-
-/* Para ejecutar a mano desde el editor (el menú no muestra funciones con "_"). */
-function quienEnvia() { Logger.log(JSON.stringify({ efectivo: Session.getEffectiveUser().getEmail(), activo: Session.getActiveUser().getEmail() })); }
-function probarResumenAhora() { Logger.log(JSON.stringify(probarResumen_())); }
-function activarResumenDiario() { Logger.log(JSON.stringify(activarResumen_())); }
-function desactivarResumenDiario() { Logger.log(JSON.stringify(desactivarResumen_())); }
 
 function fotoActual_() {
   var seed = readSeed_();
