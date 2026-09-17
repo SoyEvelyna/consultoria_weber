@@ -668,7 +668,7 @@ var RESUMEN_DESTINATARIOS = [
   "juliana@loopa.io",
   "leo@loopa.io"
 ];
-var RESUMEN_PRUEBA = "hola@soyevelyna.com";
+var RESUMEN_PRUEBA = "hola@soyevelyna.com,abrahanevelyn@gmail.com";  /* solo para las pruebas */
 var RESUMEN_ZONA = "America/Argentina/Buenos_Aires";
 var RESUMEN_HORA = 18;
 var TABLERO_URL = "https://soyevelyna.github.io/consultoria_weber/";
