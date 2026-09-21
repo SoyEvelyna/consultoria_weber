@@ -168,7 +168,28 @@ function cell_(row, idx) {
 function readSeed_() {
   var proceso = readProceso_();
   proceso.etapa1 = readEtapa1_();
+  proceso.opciones = readOpciones_();
   return proceso;
+}
+
+/* Opciones que ofrecen los desplegables de la hoja, para que la web proponga
+   las mismas y no se rechace lo que se escribe. */
+function readOpciones_() {
+  var out = { area: [], responsable: [], responsableReuniones: [] };
+  try {
+    var L = procesoLayout_();
+    var row = L.tasks.length ? L.tasks[0].row : null;
+    if (row) {
+      ["area", "responsable"].forEach(function (k) {
+        if (L.cols[k] !== undefined) out[k] = dropdownValues_(L.sheet.getRange(row, L.cols[k]));
+      });
+    }
+  } catch (err) {}
+  try {
+    var T = etapa1Table_();
+    out.responsableReuniones = dropdownValues_(T.sheet.getRange(T.header + 2, 4));
+  } catch (err2) {}
+  return out;
 }
 
 function readEtapa1_() {
@@ -352,7 +373,7 @@ function obsSinLinks_(text, links) {
 /* Deja en la celda de OBSERVACIONES el texto y, debajo, un link por línea.
    Una línea que trae texto además del link (ej. "Reposteo de Ger: https://…")
    se guarda como texto, y la URL de adentro igual queda clickeable. */
-function escribirObsYLinks_(cell, fields) {
+function escribirObsYLinks_(cell, fields, perdidos) {
   var currentText = String(cell.getValue() || "");
   var currentLinks = obsLinks_(cell.getRichTextValue(), currentText);
   var partes = fields.link !== undefined
@@ -364,7 +385,7 @@ function escribirObsYLinks_(cell, fields) {
     else conTexto.push(x);
   });
   var base = fields.obs !== undefined ? (fields.obs || "") : (obsSinLinks_(currentText, currentLinks) || "");
-  base = [base].concat(conTexto).filter(Boolean).join("\n");
+  base = [base].concat(conTexto).concat(perdidos || []).filter(Boolean).join("\n");
   var text = [base].concat(links).filter(Boolean).join("\n");
   if (!text) { cell.setValue(""); return; }
   var builder = SpreadsheetApp.newRichTextValue().setText(text);
@@ -557,20 +578,76 @@ function toSheetDate_(iso) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
 }
 
+function norm_(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+/* Opciones de un desplegable que NO acepta otros valores (null si acepta cualquiera). */
+function listOptions_(cell) {
+  var dv = cell.getDataValidation();
+  if (!dv || dv.getAllowInvalid()) return null;
+  var type = dv.getCriteriaType();
+  var crit = dv.getCriteriaValues();
+  if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) return crit[0];
+  if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE) {
+    return crit[0].getValues().map(function (r) { return r[0]; }).filter(function (v) { return v !== ""; });
+  }
+  return null;
+}
+
+/* Valores de un desplegable (acepte o no otros), para ofrecerlos en la web. */
+function dropdownValues_(cell) {
+  var dv = cell.getDataValidation();
+  if (!dv) return [];
+  var type = dv.getCriteriaType();
+  var crit = dv.getCriteriaValues();
+  var vals = [];
+  if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) vals = crit[0];
+  else if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE) {
+    vals = crit[0].getValues().map(function (r) { return r[0]; });
+  }
+  return vals.map(function (v) { return String(v).trim(); }).filter(Boolean);
+}
+
+/* Escribe el primer candidato que la celda acepte. false si el desplegable los rechaza. */
+function setSafe_(cell, candidates) {
+  var options = listOptions_(cell);
+  var value = candidates[0];
+  if (options) {
+    var hit = null;
+    candidates.forEach(function (c) {
+      if (hit !== null) return;
+      options.forEach(function (o) { if (hit === null && norm_(o) === norm_(c)) hit = o; });
+    });
+    if (hit === null) return false;
+    value = hit;
+  }
+  try { cell.setValue(value); return true; } catch (err) { return false; }
+}
+
+/* Escribe los campos en su columna. Lo que un desplegable rechaza no tira abajo
+   el guardado: se anota en OBSERVACIONES y se avisa a la web. */
 function writeTaskCells_(sheet, row, fields, cols) {
+  var perdidos = [];
   Object.keys(cols).forEach(function (k) {
     if (k === "obs" || fields[k] === undefined) return;
     var v = fields[k];
-    if (k === "inicio" || k === "cierre") v = toSheetDate_(v);
-    else if (k === "estado") v = ESTADO_A_SHEET[v] || v || "";
-    else if (k === "prioridad") v = prioridadNorm_(v) || "";
-    else if (v === null) v = "";
-    sheet.getRange(row, cols[k]).setValue(v);
+    if (v === null || v === "") { try { sheet.getRange(row, cols[k]).setValue(""); } catch (err) {} return; }
+    var candidatos = k === "inicio" || k === "cierre" ? [toSheetDate_(v)]
+      : k === "estado" ? [ESTADO_A_SHEET[v] || v, v]
+      : k === "prioridad" ? [prioridadNorm_(v) || v]
+      : [v];
+    if (!setSafe_(sheet.getRange(row, cols[k]), candidatos)) {
+      perdidos.push(k.charAt(0).toUpperCase() + k.slice(1) + ": " + v);
+    }
   });
-  // OBSERVACIONES guarda el texto y, debajo, los links del entregable.
-  if (cols.obs !== undefined && (fields.obs !== undefined || fields.link !== undefined)) {
-    escribirObsYLinks_(sheet.getRange(row, cols.obs), fields);
+  // OBSERVACIONES guarda el texto, lo que no entró en su columna, y los links.
+  if (cols.obs !== undefined && (fields.obs !== undefined || fields.link !== undefined || perdidos.length)) {
+    escribirObsYLinks_(sheet.getRange(row, cols.obs), fields, perdidos);
   }
+  return perdidos;
 }
 
 /* Mueve una fila (valores y formato) debajo de afterRow. Devuelve su fila final. */
@@ -603,7 +680,7 @@ function updateTask_(id, fields) {
   var L = procesoLayout_();
   var t = findTask_(L, id);
   if (!t) throw new Error("No encuentro esa tarea en '" + SHEET_PROCESO + "'. Puede haber cambiado en el Sheet: recargá la página.");
-  writeTaskCells_(L.sheet, t.row, fields, L.cols);
+  var perdidos = writeTaskCells_(L.sheet, t.row, fields, L.cols);
   var row = t.row;
   if (fields.estado !== undefined) {
     var done = fields.estado === "Completado";
@@ -612,7 +689,7 @@ function updateTask_(id, fields) {
   }
   var newId = idAtRow_(row);
   migrateOverride_(id, newId, fields);
-  return { id: newId };
+  return { id: newId, enObservaciones: perdidos };
 }
 
 function addTask_(fields) {
@@ -621,8 +698,8 @@ function addTask_(fields) {
   L.sheet.insertRowAfter(after);
   var row = after + 1;
   L.sheet.getRange(row, 1, 1, L.sheet.getMaxColumns()).clearContent();
-  writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields), L.cols);
-  return { id: idAtRow_(row) };
+  var perdidos = writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields), L.cols);
+  return { id: idAtRow_(row), enObservaciones: perdidos };
 }
 
 function deleteTask_(id) {

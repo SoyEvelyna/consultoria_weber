@@ -431,8 +431,17 @@ function initials(r){
   return (parts.length>1 ? parts[0][0]+parts[1][0] : r.slice(0,2)).toUpperCase();
 }
 function respLabel(r){ return r || "Sin asignar"; }
+/* Opciones de los desplegables de la hoja 02 (ÁREA y RESPONSABLE). Si la web
+   manda algo que no está en la lista, la celda lo rechaza. */
+let SHEET_OPCIONES = {area:[], responsable:[], responsableReuniones:[]};
+function allAreas(){
+  const set = new Set(SHEET_OPCIONES.area || []);
+  TASKS.forEach(t=>{ if(t.area && t.source!=="etapa1") set.add(t.area); });
+  return Array.from(set);
+}
 function allResponsables(){
-  const set = new Set(RESPONSABLES);
+  const base = SHEET_OPCIONES.responsable && SHEET_OPCIONES.responsable.length ? SHEET_OPCIONES.responsable : RESPONSABLES;
+  const set = new Set(base);
   TASKS.forEach(t=>{ if(t.responsable && t.source!=="etapa1") set.add(t.responsable); });
   customTasksState.forEach(c=>{ if(c.responsable) set.add(c.responsable); });
   return Array.from(set);
@@ -668,7 +677,14 @@ async function sheetWrite(action, payload){
     if(!gasData) await firstRead;
     // Se saca de pendientes justo antes de enviarlo, para no mandarlo dos veces.
     guardarPendientes(leerPendientes().filter(x=>x.id!==item.id));
-    return gasWrite_(action, payload);
+    const res = await gasWrite_(action, payload);
+    // Un desplegable de la hoja puede rechazar un valor (ej. un Área que no está
+    // en su lista). El resto se guarda igual y eso queda anotado en Observaciones.
+    if(res && res.enObservaciones && res.enObservaciones.length){
+      alert("Guardé la tarea, pero el Sheet no aceptó estos valores porque su desplegable no los tiene:\n\n" +
+        res.enObservaciones.join("\n") + "\n\nQuedaron anotados en Observaciones. Para que entren en su columna, agregá esa opción al desplegable de la hoja.");
+    }
+    return res;
   }).catch(e=>{
     console.error(e);
     if(!e.soft) alert("No se pudo guardar en el Sheet: " + e.message);
@@ -915,6 +931,7 @@ function gasApplySeed_(seed){
   RAW.backlog = seed.backlog || [];
   if(seed.objetivo) OBJETIVO = seed.objetivo;
   if(seed.prioridades && seed.prioridades.length) PRIORIDADES = seed.prioridades;
+  if(seed.opciones) SHEET_OPCIONES = seed.opciones;
   buildFaseMeta_();
   rebuildTasks_();
 }
@@ -1488,8 +1505,7 @@ function renderReuniones(root){
       <div class="field"><label class="flabel">Duración</label><input type="text" id="mt-duracion" value="2 hs" placeholder="Ej: 2 hs"></div>
     </div>
     <div class="field"><label class="flabel">Responsable / participantes</label>
-      <input type="text" id="mt-responsable" list="mt-resp-list" value="Equipo" placeholder="Equipo, Loopa o Weber">
-      <datalist id="mt-resp-list">${Array.from(new Set(["Equipo","Loopa","Weber"].concat(allResponsables()))).map(r=>`<option value="${r}">`).join("")}</datalist>
+      <select id="mt-responsable">${optionsHtml(SHEET_OPCIONES.responsableReuniones && SHEET_OPCIONES.responsableReuniones.length ? SHEET_OPCIONES.responsableReuniones : ["Equipo","Loopa","Weber"], "Equipo", "—")}</select>
     </div>
     <div class="field"><label class="flabel">Temas tratados / próximos pasos</label>
       <textarea id="mt-resumen" placeholder="Ej: repasamos el lanzamiento de brand, quedó pendiente confirmar fecha con el cliente…"></textarea>
@@ -1661,7 +1677,7 @@ function openDetailModal(t){
     <h3>Editar tarea</h3>
     <div class="field"><label class="flabel">Tarea *</label><textarea id="ed-tarea" rows="2">${esc(t.tarea)}</textarea></div>
     <div class="field-row">
-      <div class="field"><label class="flabel">Área</label><input type="text" id="ed-area" value="${esc(t.area)}"></div>
+      <div class="field"><label class="flabel">Área</label><select id="ed-area">${optionsHtml(allAreas(), t.area, "—")}</select></div>
       <div class="field"><label class="flabel">Tema</label><input type="text" id="ed-tema" value="${esc(t.tema)}"></div>
     </div>
     <div class="field-row">
@@ -1741,7 +1757,7 @@ function openAddTaskModal(prefill){
     <h3>${copia ? "Duplicar tarea" : "Nueva tarea"}</h3>
     <div class="field"><label class="flabel">Tarea *</label><input type="text" id="nt-tarea" placeholder="Ej: Armar propuesta de precios para nicho X"></div>
     <div class="field-row">
-      <div class="field"><label class="flabel">Área</label><input type="text" id="nt-area" placeholder="Ej: Marketing"></div>
+      <div class="field"><label class="flabel">Área</label><select id="nt-area">${optionsHtml(allAreas(), copia ? copia.area : "", "—")}</select></div>
       <div class="field"><label class="flabel">Tema</label><input type="text" id="nt-tema" placeholder="Ej: Redes Sociales"></div>
     </div>
     <div class="field-row">
