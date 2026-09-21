@@ -112,6 +112,7 @@ function handleAction_(action, p) {
     case "deleteMeeting": return deleteRow_(SHEET_MEETINGS, p.id);
     case "migrarEstados": return migrarEstados_();
     case "migrarPrioridad": return migrarPrioridad_();
+    case "migrarLinks": return migrarLinks_();
     case "updateTask": return updateTask_(p.id, p.fields || {});
     case "addTask": return addTask_(p.fields || {});
     case "deleteTask": return deleteTask_(p.id);
@@ -262,6 +263,7 @@ function readProceso_() {
   // Objetivo: 2 filas después de "OBJETIVO 1" (la pregunta, y la respuesta)
   var objetivo = cell_(values[objetivoRow + 2], 1) || "";
   var C = colsProceso_(values);
+  var richObs = C.obs === undefined ? null : sheet.getRange(1, C.obs + 1, values.length, 1).getRichTextValues();
 
   // Prioridades: 3 filas después de "PRIORIDADES" (la pregunta), cada una: [n, "titulo\t...\tdesc"]
   var prioridades = [];
@@ -278,7 +280,7 @@ function readProceso_() {
   var iniciativas = [];
   for (var ir = iniciativasHeaderRow + 1; ir < finIniciativas; ir++) {
     if (!tieneTarea_(values[ir], C)) continue;
-    iniciativas.push(leerTarea_(values[ir], C));
+    iniciativas.push(leerTarea_(values[ir], C, richObs ? richObs[ir][0] : null));
   }
 
   // Pendientes / backlog: solo texto libre en columna E (vacío si no está la sección)
@@ -294,7 +296,7 @@ function readProceso_() {
   var finalizados = [];
   for (var fr = finalizadosRow + 1; fr < values.length; fr++) {
     if (!tieneTarea_(values[fr], C)) continue;
-    finalizados.push(leerTarea_(values[fr], C));
+    finalizados.push(leerTarea_(values[fr], C, richObs ? richObs[fr][0] : null));
   }
 
   return {
@@ -310,13 +312,67 @@ function tieneTarea_(row, C) {
   return !!(cell_(row, C.area) || cell_(row, C.tarea));
 }
 
-function leerTarea_(row, C) {
+function leerTarea_(row, C, richObs) {
   function v(k) { return C[k] === undefined ? null : cell_(row, C[k]); }
+  var obsText = v("obs");
+  var links = obsLinks_(richObs, obsText);
   return {
+    link: links.length ? links.join("\n") : null,
     prioridad: prioridadNorm_(v("prioridad")), area: v("area"), tema: v("tema"), tarea: v("tarea"),
     responsable: v("responsable"), inicio: toIsoDate_(v("inicio")), tiempo: toIsoDate_(v("tiempo")),
-    cierre: toIsoDate_(v("cierre")), estado: v("estado"), obs: v("obs")
+    cierre: toIsoDate_(v("cierre")), estado: v("estado"), obs: obsSinLinks_(obsText, links)
   };
+}
+
+var MAX_LINKS = 3;
+
+/* Links de OBSERVACIONES (hasta 3): textos enlazados en la celda y URLs escritas. */
+function obsLinks_(richValue, text) {
+  var out = [];
+  function add(u) { if (u && out.indexOf(u) === -1 && out.length < MAX_LINKS) out.push(u); }
+  if (richValue) {
+    add(richValue.getLinkUrl());
+    richValue.getRuns().forEach(function (run) { add(run.getLinkUrl()); });
+  }
+  (String(text || "").match(/https?:\/\/\S+/g) || []).forEach(add);
+  return out;
+}
+
+/* Texto de OBSERVACIONES sin las líneas que son solo un link. */
+function obsSinLinks_(text, links) {
+  if (!text) return null;
+  var lines = String(text).split(/\n/).filter(function (line) {
+    var l = line.trim();
+    return l && links.indexOf(l) === -1 && !/^https?:\/\/\S+$/.test(l);
+  });
+  var t = lines.join("\n").trim();
+  return t || null;
+}
+
+/* Deja en la celda de OBSERVACIONES el texto y, debajo, un link por línea.
+   Una línea que trae texto además del link (ej. "Reposteo de Ger: https://…")
+   se guarda como texto, y la URL de adentro igual queda clickeable. */
+function escribirObsYLinks_(cell, fields) {
+  var currentText = String(cell.getValue() || "");
+  var currentLinks = obsLinks_(cell.getRichTextValue(), currentText);
+  var partes = fields.link !== undefined
+    ? String(fields.link || "").split(/\s*\n\s*|\s+\|\s+/).map(function (x) { return x.trim(); }).filter(Boolean)
+    : currentLinks;
+  var links = [], conTexto = [];
+  partes.forEach(function (x) {
+    if (/^https?:\/\/\S+$/.test(x)) { if (links.length < MAX_LINKS) links.push(x); }
+    else conTexto.push(x);
+  });
+  var base = fields.obs !== undefined ? (fields.obs || "") : (obsSinLinks_(currentText, currentLinks) || "");
+  base = [base].concat(conTexto).filter(Boolean).join("\n");
+  var text = [base].concat(links).filter(Boolean).join("\n");
+  if (!text) { cell.setValue(""); return; }
+  var builder = SpreadsheetApp.newRichTextValue().setText(text);
+  var re = /https?:\/\/[^\s]+/g, m;
+  while ((m = re.exec(text)) !== null) {
+    try { builder = builder.setLinkUrl(m.index, m.index + m[0].length, m[0]); } catch (err) {}
+  }
+  cell.setRichTextValue(builder.build());
 }
 
 /* "1", "p1", "P1 " -> "P1". Cualquier otra cosa se deja como está. */
@@ -503,7 +559,7 @@ function toSheetDate_(iso) {
 
 function writeTaskCells_(sheet, row, fields, cols) {
   Object.keys(cols).forEach(function (k) {
-    if (fields[k] === undefined) return;
+    if (k === "obs" || fields[k] === undefined) return;
     var v = fields[k];
     if (k === "inicio" || k === "cierre") v = toSheetDate_(v);
     else if (k === "estado") v = ESTADO_A_SHEET[v] || v || "";
@@ -511,6 +567,10 @@ function writeTaskCells_(sheet, row, fields, cols) {
     else if (v === null) v = "";
     sheet.getRange(row, cols[k]).setValue(v);
   });
+  // OBSERVACIONES guarda el texto y, debajo, los links del entregable.
+  if (cols.obs !== undefined && (fields.obs !== undefined || fields.link !== undefined)) {
+    escribirObsYLinks_(sheet.getRange(row, cols.obs), fields);
+  }
 }
 
 /* Mueve una fila (valores y formato) debajo de afterRow. Devuelve su fila final. */
@@ -532,11 +592,10 @@ function migrateOverride_(oldId, newId, fields) {
   var cols = SHEET_SCHEMAS[SHEET_OVERRIDES];
   var rowIdx = findRowIndexById_(sheet, oldId);
   if (rowIdx !== -1) {
+    // Los links ahora van en OBSERVACIONES: esta fila ya no los guarda.
     var link = sheet.getRange(rowIdx, cols.indexOf("link") + 1).getValue();
-    if (fields.link !== undefined) link = fields.link || "";
+    if (fields.link !== undefined) link = "";
     sheet.getRange(rowIdx, 1, 1, cols.length).setValues([[newId, "", link, "", "", false, nowIso_()]]);
-  } else if (fields.link) {
-    setOverride_(newId, { link: fields.link });
   }
 }
 
@@ -563,9 +622,7 @@ function addTask_(fields) {
   var row = after + 1;
   L.sheet.getRange(row, 1, 1, L.sheet.getMaxColumns()).clearContent();
   writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields), L.cols);
-  var newId = idAtRow_(row);
-  if (fields.link) setOverride_(newId, { link: fields.link });
-  return { id: newId };
+  return { id: idAtRow_(row) };
 }
 
 function deleteTask_(id) {
@@ -680,6 +737,23 @@ function estadoNuevo_(v) {
   if (s.indexOf("revis") === 0 || s.indexOf("propuesta") === 0) return "Revisar";
   if (s.indexOf("test") === 0) return "Testear";
   return "Pendiente";
+}
+
+/* Una vez: pasa los links guardados en "WebApp - Overrides" a la columna
+   OBSERVACIONES de la hoja 02 y los borra de la pestaña de la web. */
+function migrarLinks_() {
+  var L = procesoLayout_();
+  if (L.cols.obs === undefined) throw new Error("No encuentro la columna OBSERVACIONES en '" + SHEET_PROCESO + "'");
+  var overrides = readOverrides_();
+  var movidos = 0;
+  L.tasks.forEach(function (t) {
+    var ov = overrides[t.id];
+    if (!ov || !ov.link) return;
+    escribirObsYLinks_(L.sheet.getRange(t.row, L.cols.obs), { link: ov.link });
+    setOverride_(t.id, { link: "" });
+    movidos++;
+  });
+  return { tareas: L.tasks.length, linksMovidos: movidos };
 }
 
 var PRIORIDADES_SHEET = ["P1", "P2", "P3"];
