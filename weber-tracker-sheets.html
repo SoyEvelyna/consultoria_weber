@@ -308,38 +308,13 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 ::selection{background:var(--ink);color:var(--chrome)}
 
-.login-screen{position:fixed;inset:0;background:var(--paper);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
-.login-screen[hidden]{display:none}
-.login-card{background:var(--card);border:2px solid var(--ink);max-width:380px;width:100%;padding:32px 28px}
-.login-card .cond{font-size:36px;margin:6px 0 4px}
-.login-sub{font-size:13px;color:var(--muted);margin-bottom:22px}
-.login-error{background:var(--hazard);color:var(--paper);font-size:12.5px;font-weight:600;padding:9px 10px;margin-bottom:14px}
-.login-error[hidden]{display:none}
 .row-delete{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 4px}
 .row-delete:hover{color:var(--hazard)}
 .note-item,.meeting-item{position:relative}
 .note-item .row-delete,.meeting-item .row-delete{position:absolute;top:0;right:0}
 </style>
 
-<div class="login-screen" id="login-screen" hidden>
-  <div class="login-card">
-    <span class="micro">EVE · SEGUIMIENTO DE PROYECTOS</span>
-    <h1 class="cond">WEBER</h1>
-    <p class="login-sub">Ingresá con tu cuenta para ver y editar el tracker.</p>
-    <div class="login-error" id="login-error" hidden></div>
-    <form id="login-form">
-      <div class="field"><label class="flabel">Email</label>
-        <input type="email" id="login-email" autocomplete="username" required>
-      </div>
-      <div class="field"><label class="flabel">Contraseña</label>
-        <input type="password" id="login-password" autocomplete="current-password" required>
-      </div>
-      <button type="submit" class="btn-primary" id="login-submit" style="width:100%">Iniciar sesión</button>
-    </form>
-  </div>
-</div>
-
-<div id="app" hidden>
+<div id="app">
   <header class="topbar">
     <div class="brandmark" style="color:var(--hazard)">
       <svg viewBox="0 0 318 91" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Evelyna">
@@ -361,7 +336,6 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
     <div class="meta-block">
       <span class="stage-pill">Etapa 2 · Plan de acción · 1er trimestre</span>
       <button class="btn-secondary btn-sm" id="export-btn" style="margin-top:2px">⬇ Exportar a Excel</button>
-      <button class="btn-secondary btn-sm" id="logout-btn" style="margin-top:2px" hidden>Cerrar sesión</button>
       <span class="sync-chip"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Conectando…</span></span>
     </div>
   </header>
@@ -375,36 +349,34 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
 </div>
 
 <!-- ============================================================
-     CONFIGURACIÓN DE SUPABASE (multi-cliente, con login)
-     - url / anonKey: los mismos para todos los clientes (Settings → API
-       en supabase.com).
-     - clientId: el slug de ESTE cliente en la tabla `clients` (ej: "weber").
-     Los usuarios inician sesión con su propia cuenta (Supabase Auth) desde
-     la pantalla de login de la web. RLS + la tabla `profiles` deciden qué
-     client_id puede ver cada cuenta — nunca hace falta entrar a Supabase.
-     Mientras esto no esté completo, el sitio sigue funcionando en
-     modo local (localStorage) exactamente como antes.
+     CONFIGURACIÓN DE GOOGLE APPS SCRIPT
+     - url: la "Web app URL" que te da Apps Script al implementar
+       (Implementar → Nueva implementación → Aplicación web).
+     - token: el mismo valor que pusiste en ACCESS_TOKEN en Code.gs.
+       No es un login por persona: cualquiera con este link+token puede
+       editar, igual que compartir el Sheet con "cualquiera con el link".
+     Mientras esto no esté completo (o Apps Script no responda), el sitio
+     sigue funcionando con los datos incluidos en este archivo y los
+     guarda en modo local (localStorage) — no se rompe nada por dejarlo así.
      ============================================================ -->
 <script>
-  window.WEBER_SUPABASE_CONFIG = {
-    url: "https://seyaypaptlimffkomhps.supabase.co",
-    anonKey: "sb_publishable_5TPnwG0nWacDbxLiSYqlRQ_emdvua88",
-    clientId: "weber"
+  window.WEBER_GAS_CONFIG = {
+    url: "https://script.google.com/macros/s/YOUR-DEPLOYMENT-ID/exec",
+    token: "OKSiDEIeEQ55k3kCXS3cOL0f53TNBR9U"
   };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* =====================================================================
    DATA — extraído de "Loopa I Weber I Plan de trabajo.xlsx"
    ===================================================================== */
-const RAW = {"etapa1": [{"fecha": "2026-06-04", "tarea": "Workshop I Estado de situación", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Workshop I Weber (descargar para mejor visualización).pdf", "obs": null}, {"fecha": "2026-06-16", "tarea": "Diagnóstico del negocio", "responsable": "Loopa", "estado": "Finalizado", "resultado": "Weber I Etapa 1 I Diagnóstico inicial del negocio", "obs": null}, {"fecha": "2026-06-24", "tarea": "Estrategia de marketing anual", "responsable": "Loopa", "estado": "Finalizado", "resultado": "Weber I Etapa 1 I Estrategia de marketing anual", "obs": null}, {"fecha": "2026-07-01", "tarea": "Estrategia de marketing trimestral", "responsable": "Loopa", "estado": "Finalizado", "resultado": "Weber I Etapa 1 I Estrategia de marketing trimestral", "obs": null}, {"fecha": "2026-07-07", "tarea": "1er encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Dashboard + Clientes", "obs": null}, {"fecha": "2026-07-14", "tarea": "2do encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Casos exitosos + Listado nueva marca", "obs": null}, {"fecha": "2026-07-21", "tarea": "3er encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Tutoriales + Dash con listado de clientes", "obs": null}, {"fecha": "2026-07-17", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-07-21", "tarea": "4to encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Propuesta lanzamiento de marca", "obs": null}, {"fecha": "2026-07-24", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-07-28", "tarea": "5to encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Propuesta presencia en Comex + Mapeo de eventos", "obs": null}, {"fecha": "2026-07-31", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Nichos Vaca Muerta + Devolución de perfil", "obs": null}, {"fecha": "2026-08-04", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-11", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-14", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-18", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-21", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-25", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}], "iniciativas": [{"area": "Marketing", "tema": "Capacitación en IA", "tarea": "España + CABA", "responsable": "Eve", "inicio": "2026-09-03", "tiempo": "2026-09-03", "cierre": "2026-09-03", "estado": "Revisar", "obs": null}, {"area": "Marketing", "tema": "Cliente potencial", "tarea": "Cooltech I Dani", "responsable": null, "inicio": "2026-09-03", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "Eventos", "tarea": "Calendario", "responsable": "Ger", "inicio": "2026-08-11", "tiempo": null, "cierre": null, "estado": "Actualización", "obs": "Weber_Registro_Ferias_Eventos"}, {"area": "Marketing", "tema": "Dashboard Clientes", "tarea": "Completar: Base de datos de proveedores", "responsable": "Eve", "inicio": "2026-07-07", "tiempo": "2026-09-01", "cierre": null, "estado": "En proceso", "obs": "Clientes I Mail al equipo para sumar"}, {"area": "CEO", "tema": "Dashboard Clientes", "tarea": "Completar: Base de datos de clientes potenciales", "responsable": "Ger", "inicio": "2026-07-07", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": "Clientes I Mail al equipo para sumar"}, {"area": "Marketing", "tema": "Oilgas", "tarea": "Sumar: LinkedIn + Email + Web", "responsable": "Eve", "inicio": "2026-08-25", "tiempo": "2026-08-26", "cierre": null, "estado": "Pendiente", "obs": "Aduana de Neuquén I desglose operador local, ARimport detalladas"}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Email con propuesta web + call con Ger", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": null, "estado": "En proceso", "obs": "Email I Recontacto"}, {"area": "CEO", "tema": "Registro de marca", "tarea": "Registrar Weber como marca", "responsable": "Ger", "inicio": "2026-08-04", "tiempo": "2026-08-18", "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "CEO", "tema": "Brand nuevo", "tarea": "Logo para la entrada de la oficina", "responsable": "Ger", "inicio": "2026-07-24", "tiempo": "2026-08-28", "cierre": null, "estado": "En proceso", "obs": null}, {"area": "Marketing", "tema": "ChatGPT", "tarea": "Armar proyectos: Oilgas + notas de opinión", "responsable": "Eve", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": "Coordinar vuelta de vacaciones de Ger"}, {"area": "CEO", "tema": "Expo-logisti-k", "tarea": "Definir a quiénes contactar", "responsable": "Ger", "inicio": "2026-08-11", "tiempo": "2026-08-18", "cierre": null, "estado": "En proceso", "obs": "BD Eventos I Mapa de seguidores — Ger envía mensaje personalizado a quienes dicen \"contactar\""}, {"area": "CEO", "tema": "Brand nuevo", "tarea": "1° mail a clientes + proveedores: nuevo brand, web y redes", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": null, "estado": "Pendiente", "obs": "Mail para clientes / Mail para proveedores — enviar"}, {"area": "Comunicacion", "tema": "Email marketing", "tarea": "2° mail a proveedores + clientes: primer post y redes", "responsable": "Fer", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comunicacion", "tema": "Email marketing", "tarea": "Mail al equipo Weber: primer post y redes", "responsable": "Fer", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "Leads", "tarea": "Nichos por servicios", "responsable": "Eve", "inicio": "2026-07-24", "tiempo": "2026-08-11", "cierre": null, "estado": "Propuesta", "obs": null}, {"area": "Supervisores", "tema": "Logística", "tarea": "Tipo de servicio + caso de éxito a mostrar + diferencial", "responsable": "Ari", "inicio": "2026-07-24", "tiempo": "2026-07-24", "cierre": "2026-07-22", "estado": "Finalizada", "obs": null}, {"area": "CEO", "tema": "Brand nuevo", "tarea": "Actualizar logo en notas de crédito, facturas y recibos", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-18", "cierre": null, "estado": "En proceso", "obs": null}, {"area": "Marketing", "tema": "Google My Business", "tarea": "3er mail a clientes + proveedores: generar opiniones", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "Email marketing", "tarea": "4to mail a clientes + proveedores: nota de opinión", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Actualización de recursos", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": null, "estado": "Revisar", "obs": "Weber I Listado nueva identidad — referencias diseño gráfico"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Lanzamiento de nuevo brand", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-18", "cierre": "2026-09-01", "estado": "Finalizada", "obs": "Weber I Propuesta lanzamiento + Propuesta aplicaciones"}, {"area": "Comunicacion", "tema": "Whatsapp Business", "tarea": "Mensaje de bienvenida + sheet de registro", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-24", "cierre": "2026-09-01", "estado": "Finalizada", "obs": "Form como el de la web"}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "LinkedIn + Instagram: estrategia y propuesta de planning", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-18", "cierre": null, "estado": "Finalizada", "obs": "Piezas de septiembre"}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "Septiembre: workshop Weber + copy del video y nota de Ger", "responsable": "Fer", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "CEO", "tema": "Redes Sociales", "tarea": "Septiembre: info reunión con China", "responsable": "Ger", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "Propuesta de contenidos: octubre", "responsable": "Fer", "inicio": "2026-09-02", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comercial", "tema": "Redes Sociales", "tarea": "Competencia: ver si están pauteando o no", "responsable": "Fer", "inicio": null, "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "RRHH", "tarea": "Devolución de búsqueda", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": null, "estado": "Pendiente", "obs": "RRHH"}, {"area": "Marketing", "tema": "Leads Web", "tarea": "Generación de seguimiento de leads de la web", "responsable": "Loopa", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Actualización", "obs": "Weber — form"}, {"area": "Marketing", "tema": null, "tarea": "Eventos: contactos de expositores y disertantes", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": null, "cierre": null, "estado": "Actualización", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Supervisores", "tema": null, "tarea": "Casos de éxito · Fase 1 — completar registro del listado", "responsable": "Supervisores", "inicio": "2026-07-14", "tiempo": "2026-07-28", "cierre": null, "estado": "Actualización", "obs": "Weber I Dashboard de casos de éxito"}, {"area": "Supervisores", "tema": null, "tarea": "Nicho · Fase 1 — conocer al nicho general", "responsable": "Supervisores", "inicio": "2026-07-01", "tiempo": "2026-08-11", "cierre": null, "estado": "Pendiente", "obs": "Loopa I Weber I Ficha de nicho"}], "finalizados": [{"area": "Marketing", "tema": null, "tarea": "Dashboard Clientes: armar base de clientes actuales y potenciales", "responsable": "Eve", "inicio": "2026-07-01", "tiempo": "2026-07-21", "cierre": "2026-07-14", "estado": "Finalizada", "obs": "Weber I Dashboard de clientes"}, {"area": "Marketing", "tema": null, "tarea": "Casos de éxito · Fase 1 — armar dashboard del listado", "responsable": "Eve", "inicio": "2026-05-01", "tiempo": "2026-07-29", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Casos de éxito.docx + Weber I Dashboard de casos de éxito"}, {"area": "Marketing", "tema": null, "tarea": "Nuevo brand: listado de medios y recursos a actualizar", "responsable": "Eve", "inicio": "2026-07-01", "tiempo": "2026-07-10", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Weber I Listado nueva identidad"}, {"area": "Marketing", "tema": null, "tarea": "Uso del drive + sheet de seguimiento", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Tutorial"}, {"area": "Marketing", "tema": null, "tarea": "Uso de comentarios en el documento", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Instructivo del sistema de seguimiento"}, {"area": "Comunicacion", "tema": null, "tarea": "Web nueva con identidad visual finalizada", "responsable": "Loopa", "inicio": "2026-05-01", "tiempo": "2026-07-10", "cierre": "2026-07-17", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "Dashboard Clientes: sumar la base actual", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-14", "cierre": "2026-07-14", "estado": "Finalizada", "obs": "Weber I Dashboard de clientes"}, {"area": "Administración", "tema": null, "tarea": "Nuevo brand: listado de medios y recursos a actualizar", "responsable": "Ger", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-17", "estado": "Finalizada", "obs": "Diseño gráfico I Weber I Listado nueva identidad"}, {"area": "Marketing", "tema": null, "tarea": "Grupo de trabajo por WhatsApp", "responsable": "Eve", "inicio": "2026-07-17", "tiempo": "2026-07-17", "cierre": "2026-07-21", "estado": "Finalizada", "obs": null}, {"area": "Administración", "tema": null, "tarea": "Claves y accesos digitales: LinkedIn + Instagram + Google", "responsable": "Ger", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Weber I Accesos"}, {"area": "Marketing", "tema": null, "tarea": "Propuesta de lanzamiento de nuevo brand", "responsable": "Eve", "inicio": "2026-07-17", "tiempo": "2026-07-28", "cierre": "2026-07-24", "estado": "Finalizada", "obs": "Weber I Propuesta lanzamiento"}, {"area": "Marketing", "tema": null, "tarea": "Web: optimizar formulario (apellido separado)", "responsable": "Eve", "inicio": "2026-07-24", "tiempo": "2026-07-29", "cierre": "2026-07-24", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "Mapeo de ferias y eventos del año", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-28", "estado": "Finalizada", "obs": "Eventos"}, {"area": "Marketing", "tema": null, "tarea": "Jornada Comexnp: propuesta", "responsable": "Eve", "inicio": "2026-07-24", "tiempo": "2026-07-24", "cierre": "2026-07-24", "estado": "Finalizada", "obs": "Comex I Análisis y propuesta"}, {"area": "Marketing", "tema": null, "tarea": "Jornada Comexnp: listado de expositores y presentes", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-07-30", "cierre": "2026-07-30", "estado": "Finalizada", "obs": "Mapa Jornada Comex Norpatagónica 2026"}, {"area": "CEO", "tema": null, "tarea": "Google My Business: calendario", "responsable": "Ger", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-07-30", "estado": "Finalizada", "obs": "calendar.app.google/9gdsFyonqoJ4mUm3A"}, {"area": "Marketing", "tema": null, "tarea": "Nicho: propuesta Vaca Muerta", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-07-30", "cierre": "2026-07-30", "estado": "Finalizada", "obs": "Weber I Nicho: Vaca Muerta"}, {"area": "Marketing", "tema": null, "tarea": "Vaca Muerta: textos de landing", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-07-30", "cierre": "2026-07-30", "estado": "Finalizada", "obs": null}, {"area": "Supervisores", "tema": null, "tarea": "Mapeo de ferias y eventos: sumar y confirmar vigencia", "responsable": "Supervisores", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": "Weber I Mapeo ferias y nichos"}, {"area": "CEO", "tema": null, "tarea": "Vaca Muerta: aprobar textos de landing", "responsable": "Ger", "inicio": "2026-07-31", "tiempo": "2026-08-05", "cierre": "2026-08-05", "estado": "Finalizada", "obs": "Weber I Landing Vaca Muerta"}, {"area": "Marketing", "tema": null, "tarea": "Expo-logisti-k: listado de presencia", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Marketing", "tema": null, "tarea": "Expo-logisti-k: análisis de presencia", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "Weber I ExpoLogistiK — análisis y propuesta"}, {"area": "Marketing", "tema": null, "tarea": "Relevamiento de medio: Infopymes", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "Nota de referencia: tendencias y desafíos del comercio exterior", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "LinkedIn: análisis de seguidores", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "Asociación Argentina de Agentes de Carga Internacional"}, {"area": "CEO", "tema": null, "tarea": "Contactar compañero de la facultad", "responsable": "Ger", "inicio": "2026-08-04", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": null}, {"area": "CEO", "tema": null, "tarea": "WhatsApp Business general", "responsable": "Ger", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": "2026-08-07", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": null, "tarea": "Web: sumar WhatsApp Business", "responsable": "Loopa", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-07", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": null, "tarea": "Propuesta de firma de mails", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": "Confirmada"}, {"area": "CEO", "tema": null, "tarea": "Jornada Comexnp: listado de expositores y presentes", "responsable": "Ger", "inicio": "2026-07-31", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": "Mapa Jornada Comex Norpatagónica 2026"}, {"area": "Comunicacion", "tema": null, "tarea": "Instagram: se configuró la cuenta paga", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Jornada Comexnp", "tarea": "Seguimiento de expositores y presentes", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": "2026-08-12", "estado": "Finalizada", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Se publicó web + landing Oil & Gas", "responsable": "Loopa", "inicio": "2026-08-05", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "webersi.com.ar/oilandgas"}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Diseño de landing", "responsable": "Loopa", "inicio": "2026-08-05", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Expo-logisti-k", "tarea": "Seguimiento de expositores y presentes", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-12", "estado": "Finalizada", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "Optimización de perfiles", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "LinkedIn (Germán y Weber), Instagram, WhatsApp, Facebook"}, {"area": "CEO", "tema": "Oilgas", "tarea": "Bajada con IA de lo aprendido en la expo", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Oil & Gas"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Mail de comunicación a todo el equipo", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-18", "cierre": "2026-08-21", "estado": "Finalizada", "obs": "Mail lanzamiento firmas y LinkedIn"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Firma de email: planilla de nombres y roles", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-25", "cierre": "2026-08-21", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Presupuesto de landing", "responsable": "Loopa", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Instagram", "tarea": "Insignia de Instagram", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-21", "cierre": "2026-08-25", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Listado de posteos para comentar", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Weber I Plan de redes sep–nov 2026"}, {"area": "CEO", "tema": "Oilgas", "tarea": "Redactar nota de opinión", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Nota de opinión — Oil & Gas"}, {"area": "Comunicacion", "tema": "Google My Business", "tarea": "Agregar fotos del equipo trabajando + WhatsApp Business", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-14", "cierre": "2026-08-14", "estado": "Finalizada", "obs": "Google Maps"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "1° mail a clientes + proveedores: nuevo brand, web y redes", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Mail para clientes / Mail para proveedores"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Tutorial: cómo instalar tu firma de email", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-18", "cierre": null, "estado": "Finalizada", "obs": "01. Cómo instalar tu firma de email"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Hoja membretada (Word + Excel)", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Hoja membretada"}, {"area": "CEO", "tema": "Dashboard Clientes", "tarea": "Completar: base de datos de clientes actuales", "responsable": "Ger", "inicio": "2026-07-07", "tiempo": "2026-09-01", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Clientes"}, {"area": "CEO", "tema": "Oilgas", "tarea": "Confirmar listado de posteos para comentar", "responsable": "Ger", "inicio": "2026-08-25", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Posteo para comentar"}, {"area": "Comunicacion", "tema": "Instagram", "tarea": "Cambiar la tarjeta (Meta)", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-18", "cierre": "2026-08-25", "estado": "Finalizada", "obs": null}], "backlog": ["Comunicación I Casos de éxito I Fase 2 · Plan de acción de desarrollo y publicación", "Comunicación I Casos de éxito I Fase 3 · Publicación de casos", "Comunicación I Material educativo I Fase 2 · Plan de acción de desarrollo y publicación", "Comunicación I Material educativo I Fase 3 · Publicación de material", "Comunicación I Carpeta institucional", "Comercial I Materiales comerciales I Fase 1 · Listado de materiales necesarios y plan de estructura", "Comercial I Materiales comerciales I Fase 2 · Dossier general de servicios", "Comercial I Materiales comerciales I Fase 3 · Dossier por servicio", "Comercial I Nicho I Fase 2 · Dónde están", "Comercial I Nicho I Fase 3 · Armar el funnel", "Comercial I Nicho I Fase 4 · Salir a vender"]};
+let RAW = {"etapa1": [{"fecha": "2026-06-04", "tarea": "Workshop I Estado de situación", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Workshop I Weber (descargar para mejor visualización).pdf", "obs": null}, {"fecha": "2026-06-16", "tarea": "Diagnóstico del negocio", "responsable": "Loopa", "estado": "Finalizado", "resultado": "Weber I Etapa 1 I Diagnóstico inicial del negocio", "obs": null}, {"fecha": "2026-06-24", "tarea": "Estrategia de marketing anual", "responsable": "Loopa", "estado": "Finalizado", "resultado": "Weber I Etapa 1 I Estrategia de marketing anual", "obs": null}, {"fecha": "2026-07-01", "tarea": "Estrategia de marketing trimestral", "responsable": "Loopa", "estado": "Finalizado", "resultado": "Weber I Etapa 1 I Estrategia de marketing trimestral", "obs": null}, {"fecha": "2026-07-07", "tarea": "1er encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Dashboard + Clientes", "obs": null}, {"fecha": "2026-07-14", "tarea": "2do encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Casos exitosos + Listado nueva marca", "obs": null}, {"fecha": "2026-07-21", "tarea": "3er encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Tutoriales + Dash con listado de clientes", "obs": null}, {"fecha": "2026-07-17", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-07-21", "tarea": "4to encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Propuesta lanzamiento de marca", "obs": null}, {"fecha": "2026-07-24", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-07-28", "tarea": "5to encuentro I Proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Propuesta presencia en Comex + Mapeo de eventos", "obs": null}, {"fecha": "2026-07-31", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": "Entrega: Nichos Vaca Muerta + Devolución de perfil", "obs": null}, {"fecha": "2026-08-04", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-11", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-14", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-18", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-21", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}, {"fecha": "2026-08-25", "tarea": "Encuentro I Estado del proceso de trabajo", "responsable": "Equipo", "estado": "Finalizado", "resultado": null, "obs": null}], "iniciativas": [{"area": "Marketing", "tema": "Capacitación en IA", "tarea": "España + CABA", "responsable": "Eve", "inicio": "2026-09-03", "tiempo": "2026-09-03", "cierre": "2026-09-03", "estado": "Revisar", "obs": null}, {"area": "Marketing", "tema": "Cliente potencial", "tarea": "Cooltech I Dani", "responsable": null, "inicio": "2026-09-03", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "Eventos", "tarea": "Calendario", "responsable": "Ger", "inicio": "2026-08-11", "tiempo": null, "cierre": null, "estado": "Actualización", "obs": "Weber_Registro_Ferias_Eventos"}, {"area": "Marketing", "tema": "Dashboard Clientes", "tarea": "Completar: Base de datos de proveedores", "responsable": "Eve", "inicio": "2026-07-07", "tiempo": "2026-09-01", "cierre": null, "estado": "En proceso", "obs": "Clientes I Mail al equipo para sumar"}, {"area": "CEO", "tema": "Dashboard Clientes", "tarea": "Completar: Base de datos de clientes potenciales", "responsable": "Ger", "inicio": "2026-07-07", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": "Clientes I Mail al equipo para sumar"}, {"area": "Marketing", "tema": "Oilgas", "tarea": "Sumar: LinkedIn + Email + Web", "responsable": "Eve", "inicio": "2026-08-25", "tiempo": "2026-08-26", "cierre": null, "estado": "Pendiente", "obs": "Aduana de Neuquén I desglose operador local, ARimport detalladas"}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Email con propuesta web + call con Ger", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": null, "estado": "En proceso", "obs": "Email I Recontacto"}, {"area": "CEO", "tema": "Registro de marca", "tarea": "Registrar Weber como marca", "responsable": "Ger", "inicio": "2026-08-04", "tiempo": "2026-08-18", "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "CEO", "tema": "Brand nuevo", "tarea": "Logo para la entrada de la oficina", "responsable": "Ger", "inicio": "2026-07-24", "tiempo": "2026-08-28", "cierre": null, "estado": "En proceso", "obs": null}, {"area": "Marketing", "tema": "ChatGPT", "tarea": "Armar proyectos: Oilgas + notas de opinión", "responsable": "Eve", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": "Coordinar vuelta de vacaciones de Ger"}, {"area": "CEO", "tema": "Expo-logisti-k", "tarea": "Definir a quiénes contactar", "responsable": "Ger", "inicio": "2026-08-11", "tiempo": "2026-08-18", "cierre": null, "estado": "En proceso", "obs": "BD Eventos I Mapa de seguidores — Ger envía mensaje personalizado a quienes dicen \"contactar\""}, {"area": "CEO", "tema": "Brand nuevo", "tarea": "1° mail a clientes + proveedores: nuevo brand, web y redes", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": null, "estado": "Pendiente", "obs": "Mail para clientes / Mail para proveedores — enviar"}, {"area": "Comunicacion", "tema": "Email marketing", "tarea": "2° mail a proveedores + clientes: primer post y redes", "responsable": "Fer", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comunicacion", "tema": "Email marketing", "tarea": "Mail al equipo Weber: primer post y redes", "responsable": "Fer", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "Leads", "tarea": "Nichos por servicios", "responsable": "Eve", "inicio": "2026-07-24", "tiempo": "2026-08-11", "cierre": null, "estado": "Propuesta", "obs": null}, {"area": "Supervisores", "tema": "Logística", "tarea": "Tipo de servicio + caso de éxito a mostrar + diferencial", "responsable": "Ari", "inicio": "2026-07-24", "tiempo": "2026-07-24", "cierre": "2026-07-22", "estado": "Finalizada", "obs": null}, {"area": "CEO", "tema": "Brand nuevo", "tarea": "Actualizar logo en notas de crédito, facturas y recibos", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-18", "cierre": null, "estado": "En proceso", "obs": null}, {"area": "Marketing", "tema": "Google My Business", "tarea": "3er mail a clientes + proveedores: generar opiniones", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "Email marketing", "tarea": "4to mail a clientes + proveedores: nota de opinión", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Actualización de recursos", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": null, "estado": "Revisar", "obs": "Weber I Listado nueva identidad — referencias diseño gráfico"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Lanzamiento de nuevo brand", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-18", "cierre": "2026-09-01", "estado": "Finalizada", "obs": "Weber I Propuesta lanzamiento + Propuesta aplicaciones"}, {"area": "Comunicacion", "tema": "Whatsapp Business", "tarea": "Mensaje de bienvenida + sheet de registro", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-24", "cierre": "2026-09-01", "estado": "Finalizada", "obs": "Form como el de la web"}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "LinkedIn + Instagram: estrategia y propuesta de planning", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-18", "cierre": null, "estado": "Finalizada", "obs": "Piezas de septiembre"}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "Septiembre: workshop Weber + copy del video y nota de Ger", "responsable": "Fer", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "CEO", "tema": "Redes Sociales", "tarea": "Septiembre: info reunión con China", "responsable": "Ger", "inicio": "2026-08-25", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "Propuesta de contenidos: octubre", "responsable": "Fer", "inicio": "2026-09-02", "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Comercial", "tema": "Redes Sociales", "tarea": "Competencia: ver si están pauteando o no", "responsable": "Fer", "inicio": null, "tiempo": null, "cierre": null, "estado": "Pendiente", "obs": null}, {"area": "Marketing", "tema": "RRHH", "tarea": "Devolución de búsqueda", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": null, "estado": "Pendiente", "obs": "RRHH"}, {"area": "Marketing", "tema": "Leads Web", "tarea": "Generación de seguimiento de leads de la web", "responsable": "Loopa", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Actualización", "obs": "Weber — form"}, {"area": "Marketing", "tema": null, "tarea": "Eventos: contactos de expositores y disertantes", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": null, "cierre": null, "estado": "Actualización", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Supervisores", "tema": null, "tarea": "Casos de éxito · Fase 1 — completar registro del listado", "responsable": "Supervisores", "inicio": "2026-07-14", "tiempo": "2026-07-28", "cierre": null, "estado": "Actualización", "obs": "Weber I Dashboard de casos de éxito"}, {"area": "Supervisores", "tema": null, "tarea": "Nicho · Fase 1 — conocer al nicho general", "responsable": "Supervisores", "inicio": "2026-07-01", "tiempo": "2026-08-11", "cierre": null, "estado": "Pendiente", "obs": "Loopa I Weber I Ficha de nicho"}], "finalizados": [{"area": "Marketing", "tema": null, "tarea": "Dashboard Clientes: armar base de clientes actuales y potenciales", "responsable": "Eve", "inicio": "2026-07-01", "tiempo": "2026-07-21", "cierre": "2026-07-14", "estado": "Finalizada", "obs": "Weber I Dashboard de clientes"}, {"area": "Marketing", "tema": null, "tarea": "Casos de éxito · Fase 1 — armar dashboard del listado", "responsable": "Eve", "inicio": "2026-05-01", "tiempo": "2026-07-29", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Casos de éxito.docx + Weber I Dashboard de casos de éxito"}, {"area": "Marketing", "tema": null, "tarea": "Nuevo brand: listado de medios y recursos a actualizar", "responsable": "Eve", "inicio": "2026-07-01", "tiempo": "2026-07-10", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Weber I Listado nueva identidad"}, {"area": "Marketing", "tema": null, "tarea": "Uso del drive + sheet de seguimiento", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Tutorial"}, {"area": "Marketing", "tema": null, "tarea": "Uso de comentarios en el documento", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Instructivo del sistema de seguimiento"}, {"area": "Comunicacion", "tema": null, "tarea": "Web nueva con identidad visual finalizada", "responsable": "Loopa", "inicio": "2026-05-01", "tiempo": "2026-07-10", "cierre": "2026-07-17", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "Dashboard Clientes: sumar la base actual", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-14", "cierre": "2026-07-14", "estado": "Finalizada", "obs": "Weber I Dashboard de clientes"}, {"area": "Administración", "tema": null, "tarea": "Nuevo brand: listado de medios y recursos a actualizar", "responsable": "Ger", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-17", "estado": "Finalizada", "obs": "Diseño gráfico I Weber I Listado nueva identidad"}, {"area": "Marketing", "tema": null, "tarea": "Grupo de trabajo por WhatsApp", "responsable": "Eve", "inicio": "2026-07-17", "tiempo": "2026-07-17", "cierre": "2026-07-21", "estado": "Finalizada", "obs": null}, {"area": "Administración", "tema": null, "tarea": "Claves y accesos digitales: LinkedIn + Instagram + Google", "responsable": "Ger", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-21", "estado": "Finalizada", "obs": "Weber I Accesos"}, {"area": "Marketing", "tema": null, "tarea": "Propuesta de lanzamiento de nuevo brand", "responsable": "Eve", "inicio": "2026-07-17", "tiempo": "2026-07-28", "cierre": "2026-07-24", "estado": "Finalizada", "obs": "Weber I Propuesta lanzamiento"}, {"area": "Marketing", "tema": null, "tarea": "Web: optimizar formulario (apellido separado)", "responsable": "Eve", "inicio": "2026-07-24", "tiempo": "2026-07-29", "cierre": "2026-07-24", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "Mapeo de ferias y eventos del año", "responsable": "Eve", "inicio": "2026-07-14", "tiempo": "2026-07-21", "cierre": "2026-07-28", "estado": "Finalizada", "obs": "Eventos"}, {"area": "Marketing", "tema": null, "tarea": "Jornada Comexnp: propuesta", "responsable": "Eve", "inicio": "2026-07-24", "tiempo": "2026-07-24", "cierre": "2026-07-24", "estado": "Finalizada", "obs": "Comex I Análisis y propuesta"}, {"area": "Marketing", "tema": null, "tarea": "Jornada Comexnp: listado de expositores y presentes", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-07-30", "cierre": "2026-07-30", "estado": "Finalizada", "obs": "Mapa Jornada Comex Norpatagónica 2026"}, {"area": "CEO", "tema": null, "tarea": "Google My Business: calendario", "responsable": "Ger", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-07-30", "estado": "Finalizada", "obs": "calendar.app.google/9gdsFyonqoJ4mUm3A"}, {"area": "Marketing", "tema": null, "tarea": "Nicho: propuesta Vaca Muerta", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-07-30", "cierre": "2026-07-30", "estado": "Finalizada", "obs": "Weber I Nicho: Vaca Muerta"}, {"area": "Marketing", "tema": null, "tarea": "Vaca Muerta: textos de landing", "responsable": "Eve", "inicio": "2026-07-28", "tiempo": "2026-07-30", "cierre": "2026-07-30", "estado": "Finalizada", "obs": null}, {"area": "Supervisores", "tema": null, "tarea": "Mapeo de ferias y eventos: sumar y confirmar vigencia", "responsable": "Supervisores", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": "Weber I Mapeo ferias y nichos"}, {"area": "CEO", "tema": null, "tarea": "Vaca Muerta: aprobar textos de landing", "responsable": "Ger", "inicio": "2026-07-31", "tiempo": "2026-08-05", "cierre": "2026-08-05", "estado": "Finalizada", "obs": "Weber I Landing Vaca Muerta"}, {"area": "Marketing", "tema": null, "tarea": "Expo-logisti-k: listado de presencia", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Marketing", "tema": null, "tarea": "Expo-logisti-k: análisis de presencia", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "Weber I ExpoLogistiK — análisis y propuesta"}, {"area": "Marketing", "tema": null, "tarea": "Relevamiento de medio: Infopymes", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "Nota de referencia: tendencias y desafíos del comercio exterior", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Marketing", "tema": null, "tarea": "LinkedIn: análisis de seguidores", "responsable": "Eve", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "Asociación Argentina de Agentes de Carga Internacional"}, {"area": "CEO", "tema": null, "tarea": "Contactar compañero de la facultad", "responsable": "Ger", "inicio": "2026-08-04", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": null}, {"area": "CEO", "tema": null, "tarea": "WhatsApp Business general", "responsable": "Ger", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": "2026-08-07", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": null, "tarea": "Web: sumar WhatsApp Business", "responsable": "Loopa", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-07", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": null, "tarea": "Propuesta de firma de mails", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": "Confirmada"}, {"area": "CEO", "tema": null, "tarea": "Jornada Comexnp: listado de expositores y presentes", "responsable": "Ger", "inicio": "2026-07-31", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": "Mapa Jornada Comex Norpatagónica 2026"}, {"area": "Comunicacion", "tema": null, "tarea": "Instagram: se configuró la cuenta paga", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Jornada Comexnp", "tarea": "Seguimiento de expositores y presentes", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": "2026-08-12", "estado": "Finalizada", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Se publicó web + landing Oil & Gas", "responsable": "Loopa", "inicio": "2026-08-05", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "webersi.com.ar/oilandgas"}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Diseño de landing", "responsable": "Loopa", "inicio": "2026-08-05", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Expo-logisti-k", "tarea": "Seguimiento de expositores y presentes", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-11", "cierre": "2026-08-12", "estado": "Finalizada", "obs": "BD Eventos I Mapa de seguidores"}, {"area": "Comunicacion", "tema": "Redes Sociales", "tarea": "Optimización de perfiles", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-11", "cierre": "2026-08-11", "estado": "Finalizada", "obs": "LinkedIn (Germán y Weber), Instagram, WhatsApp, Facebook"}, {"area": "CEO", "tema": "Oilgas", "tarea": "Bajada con IA de lo aprendido en la expo", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Oil & Gas"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Mail de comunicación a todo el equipo", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-18", "cierre": "2026-08-21", "estado": "Finalizada", "obs": "Mail lanzamiento firmas y LinkedIn"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Firma de email: planilla de nombres y roles", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-25", "cierre": "2026-08-21", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Presupuesto de landing", "responsable": "Loopa", "inicio": "2026-07-28", "tiempo": "2026-08-04", "cierre": "2026-08-04", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Instagram", "tarea": "Insignia de Instagram", "responsable": "Fer", "inicio": "2026-08-11", "tiempo": "2026-08-21", "cierre": "2026-08-25", "estado": "Finalizada", "obs": null}, {"area": "Comunicacion", "tema": "Oilgas", "tarea": "Listado de posteos para comentar", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Weber I Plan de redes sep–nov 2026"}, {"area": "CEO", "tema": "Oilgas", "tarea": "Redactar nota de opinión", "responsable": "Ger", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Nota de opinión — Oil & Gas"}, {"area": "Comunicacion", "tema": "Google My Business", "tarea": "Agregar fotos del equipo trabajando + WhatsApp Business", "responsable": "Fer", "inicio": "2026-07-28", "tiempo": "2026-08-14", "cierre": "2026-08-14", "estado": "Finalizada", "obs": "Google Maps"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "1° mail a clientes + proveedores: nuevo brand, web y redes", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Mail para clientes / Mail para proveedores"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Tutorial: cómo instalar tu firma de email", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-18", "cierre": null, "estado": "Finalizada", "obs": "01. Cómo instalar tu firma de email"}, {"area": "Comunicacion", "tema": "Brand nuevo", "tarea": "Hoja membretada (Word + Excel)", "responsable": "Fer", "inicio": "2026-08-04", "tiempo": "2026-08-11", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Hoja membretada"}, {"area": "CEO", "tema": "Dashboard Clientes", "tarea": "Completar: base de datos de clientes actuales", "responsable": "Ger", "inicio": "2026-07-07", "tiempo": "2026-09-01", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Clientes"}, {"area": "CEO", "tema": "Oilgas", "tarea": "Confirmar listado de posteos para comentar", "responsable": "Ger", "inicio": "2026-08-25", "tiempo": "2026-08-25", "cierre": "2026-08-25", "estado": "Finalizada", "obs": "Posteo para comentar"}, {"area": "Comunicacion", "tema": "Instagram", "tarea": "Cambiar la tarjeta (Meta)", "responsable": "Fer", "inicio": "2026-08-18", "tiempo": "2026-08-18", "cierre": "2026-08-25", "estado": "Finalizada", "obs": null}], "backlog": ["Comunicación I Casos de éxito I Fase 2 · Plan de acción de desarrollo y publicación", "Comunicación I Casos de éxito I Fase 3 · Publicación de casos", "Comunicación I Material educativo I Fase 2 · Plan de acción de desarrollo y publicación", "Comunicación I Material educativo I Fase 3 · Publicación de material", "Comunicación I Carpeta institucional", "Comercial I Materiales comerciales I Fase 1 · Listado de materiales necesarios y plan de estructura", "Comercial I Materiales comerciales I Fase 2 · Dossier general de servicios", "Comercial I Materiales comerciales I Fase 3 · Dossier por servicio", "Comercial I Nicho I Fase 2 · Dónde están", "Comercial I Nicho I Fase 3 · Armar el funnel", "Comercial I Nicho I Fase 4 · Salir a vender"]};
 
 /* =====================================================================
    OBJETIVO Y PRIORIDADES (contenido estratégico, Hoja 02)
    ===================================================================== */
-const OBJETIVO = "Que Weber comience a mostrarse, comunicar y posicionarse en el mercado: pasar de ser una marca invisible puertas afuera a tener presencia ordenada, consistente y con un sistema comercial documentado que sostenga el crecimiento.";
-const PRIORIDADES = [
+let OBJETIVO = "Que Weber comience a mostrarse, comunicar y posicionarse en el mercado: pasar de ser una marca invisible puertas afuera a tener presencia ordenada, consistente y con un sistema comercial documentado que sostenga el crecimiento.";
+let PRIORIDADES = [
   {n:1, tt:"Lanzar la nueva identidad de marca", desc:"Que Weber se vea, se sienta y se comunique de forma coherente en todos los puntos de contacto — adentro de la empresa y de cara al mercado. Web, presencia digital, materiales internos y un evento de lanzamiento."},
   {n:2, tt:"Documentar el sistema comercial por nicho", desc:"Entender bien quién es cada nicho, qué características tiene, qué materiales necesita y cómo llegar a ellos. Base construida en julio–agosto, antes de salir a buscar clientes."},
   {n:3, tt:"Posicionar con acciones comerciales concretas", desc:"Con la identidad lanzada y la base comercial lista, salir al mercado con las primeras acciones reales de contacto y captación por nicho — recién en septiembre."},
@@ -490,24 +462,29 @@ function mk(base, source, fase){
   const estadoOriginal = base.estado || null;
   return Object.assign({id, source, fase: fase!==undefined?fase:classifyFase(base), estadoOriginal}, base);
 }
-const TASKS = [];
-RAW.etapa1.forEach(e=>{
-  TASKS.push(mk({area:"Proceso", tema:"Diagnóstico y estrategia", tarea:e.tarea, responsable:e.responsable,
-    inicio:e.fecha, tiempo:e.fecha, cierre:e.fecha, estado:e.estado, obs:e.resultado}, "etapa1", 0));
-});
-RAW.iniciativas.forEach(t=> TASKS.push(mk(t, "iniciativa")));
-RAW.finalizados.forEach(t=> TASKS.push(mk(t, "finalizado")));
-RAW.backlog.forEach(str=>{
-  const parts = str.split(" I ").map(s=>s.trim());
-  const area = parts[0];
-  let tema = null, desc = parts.slice(1).join(" I ");
-  if(parts.length >= 3){ tema = parts[1]; desc = parts.slice(2).join(" I "); }
-  const faseMatch = desc.match(/Fase\s*(\d)/i);
-  const subfase = faseMatch ? "Fase "+faseMatch[1] : null;
-  const descClean = desc.replace(/Fase\s*\d\s*[·.]?\s*/i,"").trim();
-  const tarea = tema ? (tema+" — "+descClean) : descClean;
-  TASKS.push(mk({area, tema, tarea, subfase, responsable:null, inicio:null, tiempo:null, cierre:null, estado:null, obs:null}, "backlog"));
-});
+let TASKS = [];
+function rebuildTasks_(){
+  uid = 0;
+  TASKS = [];
+  RAW.etapa1.forEach(e=>{
+    TASKS.push(mk({area:"Proceso", tema:"Diagnóstico y estrategia", tarea:e.tarea, responsable:e.responsable,
+      inicio:e.fecha, tiempo:e.fecha, cierre:e.fecha, estado:e.estado, obs:e.resultado}, "etapa1", 0));
+  });
+  RAW.iniciativas.forEach(t=> TASKS.push(mk(t, "iniciativa")));
+  RAW.finalizados.forEach(t=> TASKS.push(mk(t, "finalizado")));
+  RAW.backlog.forEach(str=>{
+    const parts = str.split(" I ").map(s=>s.trim());
+    const area = parts[0];
+    let tema = null, desc = parts.slice(1).join(" I ");
+    if(parts.length >= 3){ tema = parts[1]; desc = parts.slice(2).join(" I "); }
+    const faseMatch = desc.match(/Fase\s*(\d)/i);
+    const subfase = faseMatch ? "Fase "+faseMatch[1] : null;
+    const descClean = desc.replace(/Fase\s*\d\s*[·.]?\s*/i,"").trim();
+    const tarea = tema ? (tema+" — "+descClean) : descClean;
+    TASKS.push(mk({area, tema, tarea, subfase, responsable:null, inicio:null, tiempo:null, cierre:null, estado:null, obs:null}, "backlog"));
+  });
+}
+rebuildTasks_(); // primer build con los datos incluidos en este archivo (fallback si Apps Script no responde)
 
 function customAsTask(doc){
   return {
@@ -653,146 +630,127 @@ async function deleteNote(id){
 }
 
 /* =====================================================================
-   SUPABASE ADAPTER
+   APPS SCRIPT ADAPTER
    Implementa la misma interfaz que la db capability de arriba
-   (doc/collection/onSnapshot) pero respaldada por Supabase Postgres +
-   Realtime, para que initStore() no tenga que cambiar su lógica.
+   (doc/collection/onSnapshot) pero respaldada por un Google Apps Script
+   Web App que lee/escribe en el Google Sheet. No hay push en tiempo real
+   (Apps Script no lo soporta): en vez de eso, se hace polling — se
+   vuelve a pedir todo cada GAS_POLL_MS y se avisa a los listeners.
    ===================================================================== */
-const SB_CFG = window.WEBER_SUPABASE_CONFIG || {};
-let sbClientSingleton = null;
+const GAS_CFG = window.WEBER_GAS_CONFIG || {};
+const GAS_POLL_MS = 8000;
+let gasLastJson = null;
+let gasListeners = [];
+let gasPollStarted = false;
 
-function supabaseConfigured(){
-  return !!(SB_CFG.url && SB_CFG.anonKey && SB_CFG.clientId &&
-    !/YOUR-PROJECT|YOUR-ANON|YOUR-CLIENT/.test(SB_CFG.url + SB_CFG.anonKey + SB_CFG.clientId));
-}
-function sbClient(){
-  if(!sbClientSingleton && typeof window.supabase !== "undefined"){
-    sbClientSingleton = window.supabase.createClient(SB_CFG.url, SB_CFG.anonKey);
-  }
-  return sbClientSingleton;
-}
-function sbRowToObj(row){
-  const o = Object.assign({}, row);
-  if("created_at" in o){ o.createdAt = o.created_at; delete o.created_at; }
-  delete o.client_id;
-  return o;
-}
-function sbObjToRow(obj){
-  const o = Object.assign({}, obj);
-  if("createdAt" in o){ o.created_at = o.createdAt; delete o.createdAt; }
-  delete o.client_id; // el client_id lo agrega siempre el adapter, nunca el llamador
-  return o;
+function gasConfigured(){
+  return !!(GAS_CFG.url && GAS_CFG.token && !/YOUR-/.test(GAS_CFG.url + GAS_CFG.token));
 }
 
-const SB_COLLECTIONS = { notes:"notes", customTasks:"custom_tasks", meetings:"meetings" };
+async function gasReadOnce_(){
+  const sep = GAS_CFG.url.indexOf("?")>=0 ? "&" : "?";
+  const res = await fetch(GAS_CFG.url + sep + "action=read&token=" + encodeURIComponent(GAS_CFG.token));
+  const json = await res.json();
+  if(!json.ok) throw new Error(json.error || "error leyendo Apps Script");
+  return json;
+}
+async function gasWrite_(action, payload){
+  const res = await fetch(GAS_CFG.url, {method:"POST", body: JSON.stringify({token: GAS_CFG.token, action, payload})});
+  const json = await res.json();
+  if(!json.ok) throw new Error(json.error || ("error en "+action));
+  return json.result;
+}
 
-function sbCollection(name){
-  const table = SB_COLLECTIONS[name];
-  const cid = SB_CFG.clientId;
-  let orderField = null, orderAsc = true, limitN = null;
+function gasApplySeed_(seed){
+  if(!seed) return;
+  RAW.etapa1 = seed.etapa1 || [];
+  RAW.iniciativas = seed.iniciativas || [];
+  RAW.finalizados = seed.finalizados || [];
+  RAW.backlog = seed.backlog || [];
+  if(seed.objetivo) OBJETIVO = seed.objetivo;
+  if(seed.prioridades && seed.prioridades.length) PRIORIDADES = seed.prioridades;
+  rebuildTasks_();
+}
+
+function gasNotifyListeners_(json){
+  gasListeners.forEach(l=>{ try{ l(json); }catch(e){ console.error(e); } });
+}
+function gasRegisterListener_(onData){
+  gasListeners.push(onData);
+  if(gasLastJson) onData(gasLastJson);
+}
+
+async function gasPollTick_(){
+  try{
+    const json = await gasReadOnce_();
+    gasLastJson = json;
+    gasApplySeed_(json.seed);
+    gasNotifyListeners_(json);
+  }catch(e){ console.error("Apps Script: error de sincronización:", e); }
+}
+function gasStartPolling_(){
+  if(gasPollStarted) return;
+  gasPollStarted = true;
+  setInterval(gasPollTick_, GAS_POLL_MS);
+}
+
+function gasOverridesDoc_(){
+  return {
+    async update(payload){
+      const patch = (payload && payload.tasks) || {};
+      for(const taskId of Object.keys(patch)) await gasWrite_("setOverride", {taskId, patch: patch[taskId]});
+    },
+    async set(payload){ return this.update(payload); },
+    onSnapshot(cb, errCb){
+      gasRegisterListener_(json=>{
+        cb({exists:true, data: ()=> ({tasks: json.overrides || {}})});
+      });
+    }
+  };
+}
+
+const GAS_COLLECTIONS = {
+  notes: {key:"notes", add:"addNote", update:null, del:"deleteNote"},
+  customTasks: {key:"customTasks", add:"addCustomTask", update:"updateCustomTask", del:"deleteCustomTask"},
+  meetings: {key:"meetings", add:"addMeeting", update:null, del:"deleteMeeting"}
+};
+
+function gasCollection_(name){
+  const cfg = GAS_COLLECTIONS[name];
   const ref = {
     doc(id){
       return {
-        async set(data){
-          const row = Object.assign({id, client_id:cid}, sbObjToRow(data));
-          const {error} = await sbClient().from(table).upsert(row, {onConflict:"client_id,id"});
-          if(error) throw error;
-        },
-        async update(patch){
-          const row = sbObjToRow(patch);
-          const {error} = await sbClient().from(table).update(row).eq("client_id", cid).eq("id", id);
-          if(error) throw error;
-        },
-        async delete(){
-          const {error} = await sbClient().from(table).delete().eq("client_id", cid).eq("id", id);
-          if(error) throw error;
-        }
+        async set(data){ await gasWrite_(cfg.add, Object.assign({}, data, {id})); },
+        async update(patch){ if(cfg.update) await gasWrite_(cfg.update, {id, patch}); },
+        async delete(){ await gasWrite_(cfg.del, {id}); }
       };
     },
-    orderBy(field, dir){
-      orderField = field==="createdAt" ? "created_at" : field;
-      orderAsc = dir!=="desc";
-      return ref;
-    },
-    limit(n){ limitN = n; return ref; },
+    orderBy(){ return ref; },
+    limit(){ return ref; },
     onSnapshot(cb, errCb){
-      async function refresh(){
-        try{
-          let q = sbClient().from(table).select("*").eq("client_id", cid);
-          if(orderField) q = q.order(orderField, {ascending: orderAsc});
-          if(limitN) q = q.limit(limitN);
-          const {data, error} = await q;
-          if(error) throw error;
-          cb({docs: data.map(row=>({data: ()=> sbRowToObj(row)}))});
-        }catch(e){ errCb && errCb(e); }
-      }
-      refresh();
-      const channel = sbClient().channel("rt-"+table+"-"+cid+"-"+Math.random().toString(36).slice(2))
-        .on("postgres_changes", {event:"*", schema:"public", table, filter:"client_id=eq."+cid}, refresh)
-        .subscribe();
-      return ()=> sbClient().removeChannel(channel);
+      gasRegisterListener_(json=>{
+        cb({docs: (json[cfg.key] || []).map(row=>({data: ()=> row}))});
+      });
     }
   };
   return ref;
 }
 
-function sbOverridesDoc(){
-  const table = "task_overrides";
-  const cid = SB_CFG.clientId;
-  return {
-    async update(payload){
-      const patch = (payload && payload.tasks) || {};
-      for(const taskId of Object.keys(patch)){
-        const p = patch[taskId] || {};
-        const changes = {};
-        if("estado" in p) changes.estado = p.estado;
-        if("link" in p) changes.link = p.link;
-        if("inicio" in p) changes.inicio = p.inicio;
-        if("cierre" in p) changes.cierre = p.cierre;
-        if("hidden" in p) changes.hidden = p.hidden;
-        changes.updated_at = p.updatedAt || new Date().toISOString();
-        const {data, error} = await sbClient().from(table).update(changes).eq("client_id", cid).eq("task_id", taskId).select();
-        if(error) throw error;
-        if(!data || data.length===0){
-          const {error: insErr} = await sbClient().from(table).insert(Object.assign({client_id:cid, task_id:taskId}, changes));
-          if(insErr) throw insErr;
-        }
-      }
-    },
-    async set(payload){ return this.update(payload); },
-    onSnapshot(cb, errCb){
-      async function refresh(){
-        try{
-          const {data, error} = await sbClient().from(table).select("*").eq("client_id", cid);
-          if(error) throw error;
-          const tasks = {};
-          (data||[]).forEach(row=>{ tasks[row.task_id] = {estado: row.estado, link: row.link, inicio: row.inicio, cierre: row.cierre, hidden: row.hidden, updatedAt: row.updated_at}; });
-          cb({exists:true, data: ()=> ({tasks})});
-        }catch(e){ errCb && errCb(e); }
-      }
-      refresh();
-      const channel = sbClient().channel("rt-task_overrides-"+cid+"-"+Math.random().toString(36).slice(2))
-        .on("postgres_changes", {event:"*", schema:"public", table, filter:"client_id=eq."+cid}, refresh)
-        .subscribe();
-      return ()=> sbClient().removeChannel(channel);
-    }
-  };
-}
-
-async function initSupabaseDb(){
-  if(!supabaseConfigured() || typeof window.supabase === "undefined") return null;
-  const client = sbClient();
-  if(!client) return null;
-  const {error} = await client.from("task_overrides").select("task_id").eq("client_id", SB_CFG.clientId).limit(1);
-  if(error){ console.error("Supabase no disponible:", error.message); return null; }
+async function initGasStore_(){
+  if(!gasConfigured()) return null;
+  try{
+    gasLastJson = await gasReadOnce_();
+  }catch(e){ console.error("Apps Script no disponible:", e); return null; }
+  gasApplySeed_(gasLastJson.seed);
+  gasStartPolling_();
   return {
     doc(path){
-      if(path==="board/overrides") return sbOverridesDoc();
+      if(path==="board/overrides") return gasOverridesDoc_();
       throw new Error("doc path no soportado: "+path);
     },
     collection(name){
-      if(!SB_COLLECTIONS[name]) throw new Error("collection no soportada: "+name);
-      return sbCollection(name);
+      if(!GAS_COLLECTIONS[name]) throw new Error("collection no soportada: "+name);
+      return gasCollection_(name);
     }
   };
 }
@@ -805,8 +763,8 @@ async function initStore(){
     }
   }catch(e){ dbNs = null; }
   if(!dbNs){
-    try{ dbNs = await initSupabaseDb(); }
-    catch(e){ console.error("Error inicializando Supabase:", e); dbNs = null; }
+    try{ dbNs = await initGasStore_(); }
+    catch(e){ console.error("Error inicializando Apps Script:", e); dbNs = null; }
   }
   if(!dbNs){ setSyncUI("local"); render(); return; }
   overridesDoc = dbNs.doc("board/overrides");
@@ -1589,74 +1547,10 @@ async function exportToExcel(btn){
 document.getElementById("export-btn").addEventListener("click", (e)=> exportToExcel(e.currentTarget));
 
 /* =====================================================================
-   AUTENTICACIÓN (pantalla de login)
-   Sin Supabase configurado: la app arranca directo en modo local, como
-   siempre. Con Supabase configurado: no se muestra nada de la app hasta
-   que haya una sesión válida.
-   ===================================================================== */
-function showApp(){
-  document.getElementById("login-screen").hidden = true;
-  document.getElementById("app").hidden = false;
-  document.getElementById("logout-btn").hidden = !supabaseConfigured();
-}
-function showLogin(errMsg){
-  document.getElementById("app").hidden = true;
-  document.getElementById("login-screen").hidden = false;
-  const err = document.getElementById("login-error");
-  if(errMsg){ err.textContent = errMsg; err.hidden = false; } else { err.hidden = true; }
-  document.getElementById("login-password").value = "";
-}
-function startApp(){
-  showApp();
-  render();
-  initStore();
-}
-
-async function boot(){
-  if(!supabaseConfigured() || typeof window.supabase === "undefined"){
-    startApp();
-    return;
-  }
-  const client = sbClient();
-  const {data:{session}} = await client.auth.getSession();
-  if(session) startApp(); else showLogin();
-
-  client.auth.onAuthStateChange((event)=>{
-    if(event==="SIGNED_IN"){
-      startApp();
-    } else if(event==="SIGNED_OUT"){
-      dbNs = null; overridesDoc = null; notesCol = null; customCol = null; meetingsCol = null;
-      showLogin();
-    }
-  });
-}
-
-document.getElementById("login-form").addEventListener("submit", async (e)=>{
-  e.preventDefault();
-  const email = document.getElementById("login-email").value.trim();
-  const password = document.getElementById("login-password").value;
-  const btn = document.getElementById("login-submit");
-  btn.disabled = true; btn.textContent = "Ingresando…";
-  try{
-    const {error} = await sbClient().auth.signInWithPassword({email, password});
-    if(error){
-      showLogin(error.message==="Invalid login credentials" ? "Email o contraseña incorrectos." : error.message);
-    }
-    // Éxito: onAuthStateChange dispara startApp()
-  }finally{
-    btn.disabled = false; btn.textContent = "Iniciar sesión";
-  }
-});
-
-document.getElementById("logout-btn").addEventListener("click", async ()=>{
-  const client = sbClient();
-  if(client) await client.auth.signOut();
-});
-
-/* =====================================================================
    INIT
    ===================================================================== */
-boot();
+render();
+initStore();
 </script>
 
 

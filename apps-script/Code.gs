@@ -111,6 +111,7 @@ function handleAction_(action, p) {
       Object.assign({ id: "m" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteMeeting": return deleteRow_(SHEET_MEETINGS, p.id);
     case "migrarEstados": return migrarEstados_();
+    case "migrarPrioridad": return migrarPrioridad_();
     case "updateTask": return updateTask_(p.id, p.fields || {});
     case "addTask": return addTask_(p.fields || {});
     case "deleteTask": return deleteTask_(p.id);
@@ -196,6 +197,44 @@ function readEtapa1_() {
   return out;
 }
 
+/* Ubica las columnas de la tabla de tareas por el texto del encabezado, como
+   en Noctis. TAREA no tiene encabezado propio (ahí va el cartel de la etapa):
+   es la columna siguiente a TEMA. Índices 0-based. */
+function colsProceso_(values) {
+  var NOMBRES = { "PRIORIDAD": "prioridad", "AREA": "area", "TEMA": "tema", "RESPONSABLE": "responsable",
+    "INICIO": "inicio", "TIEMPO": "tiempo", "CIERRE": "cierre", "ESTADO": "estado", "OBSERVACIONES": "obs" };
+  for (var r = 0; r < values.length; r++) {
+    var fila = values[r], map = null;
+    for (var c = 0; c < fila.length; c++) {
+      var k = NOMBRES[sinAcentos_(fila[c])];
+      if (!k) continue;
+      map = map || {};
+      if (map[k] === undefined) map[k] = c;
+    }
+    if (map && map.area !== undefined && map.tema !== undefined && map.estado !== undefined) {
+      map.tarea = map.tema + 1;
+      map.header = r;
+      return map;
+    }
+  }
+  throw new Error("No encuentro el encabezado (AREA / TEMA / ESTADO) en '" + SHEET_PROCESO + "'");
+}
+
+function sinAcentos_(v) {
+  return String(v == null ? "" : v).trim().toUpperCase()
+    .replace(/[ÁÀÄÂ]/g, "A").replace(/[ÉÈËÊ]/g, "E").replace(/[ÍÌÏÎ]/g, "I")
+    .replace(/[ÓÒÖÔ]/g, "O").replace(/[ÚÙÜÛ]/g, "U");
+}
+
+/* Columnas escribibles, 1-based, para writeTaskCells_. */
+function colsEscritura_(C) {
+  var out = {};
+  ["prioridad", "area", "tema", "tarea", "responsable", "inicio", "cierre", "estado", "obs"].forEach(function (k) {
+    if (C[k] !== undefined) out[k] = C[k] + 1;
+  });
+  return out;
+}
+
 function readProceso_() {
   var sheet = ss_().getSheetByName(SHEET_PROCESO);
   if (!sheet) throw new Error("No encuentro la hoja '" + SHEET_PROCESO + "'");
@@ -222,12 +261,13 @@ function readProceso_() {
 
   // Objetivo: 2 filas después de "OBJETIVO 1" (la pregunta, y la respuesta)
   var objetivo = cell_(values[objetivoRow + 2], 1) || "";
+  var C = colsProceso_(values);
 
   // Prioridades: 3 filas después de "PRIORIDADES" (la pregunta), cada una: [n, "titulo\t...\tdesc"]
   var prioridades = [];
   for (var pr = prioridadesRow + 2; pr < iniciativasRow; pr++) {
     var n = cell_(values[pr], 1);
-    var raw = cell_(values[pr], 2);
+    var raw = cell_(values[pr], 2) || cell_(values[pr], 3) || cell_(values[pr], 4);
     if (n === null || raw === null) continue;
     var parts = String(raw).split(/\t+/).map(function (s) { return s.trim(); }).filter(Boolean);
     prioridades.push({ n: n, tt: parts[0] || "", desc: parts.slice(1).join(" ") });
@@ -237,14 +277,8 @@ function readProceso_() {
   var iniciativasHeaderRow = iniciativasRow + 2;
   var iniciativas = [];
   for (var ir = iniciativasHeaderRow + 1; ir < finIniciativas; ir++) {
-    var row = values[ir];
-    var area = cell_(row, 2), tarea = cell_(row, 4);
-    if (!area && !tarea) continue;
-    iniciativas.push({
-      area: area, tema: cell_(row, 3), tarea: tarea, responsable: cell_(row, 5),
-      inicio: toIsoDate_(cell_(row, 6)), tiempo: toIsoDate_(cell_(row, 7)), cierre: toIsoDate_(cell_(row, 8)),
-      estado: cell_(row, 9), obs: cell_(row, 10)
-    });
+    if (!tieneTarea_(values[ir], C)) continue;
+    iniciativas.push(leerTarea_(values[ir], C));
   }
 
   // Pendientes / backlog: solo texto libre en columna E (vacío si no está la sección)
@@ -259,14 +293,8 @@ function readProceso_() {
   // Finalizados: misma estructura de columnas que iniciativas, hasta el final de la hoja
   var finalizados = [];
   for (var fr = finalizadosRow + 1; fr < values.length; fr++) {
-    var frow = values[fr];
-    var farea = cell_(frow, 2), ftarea = cell_(frow, 4);
-    if (!farea && !ftarea) continue;
-    finalizados.push({
-      area: farea, tema: cell_(frow, 3), tarea: ftarea, responsable: cell_(frow, 5),
-      inicio: toIsoDate_(cell_(frow, 6)), tiempo: toIsoDate_(cell_(frow, 7)), cierre: toIsoDate_(cell_(frow, 8)),
-      estado: cell_(frow, 9), obs: cell_(frow, 10)
-    });
+    if (!tieneTarea_(values[fr], C)) continue;
+    finalizados.push(leerTarea_(values[fr], C));
   }
 
   return {
@@ -276,6 +304,26 @@ function readProceso_() {
     finalizados: finalizados,
     backlog: backlog
   };
+}
+
+function tieneTarea_(row, C) {
+  return !!(cell_(row, C.area) || cell_(row, C.tarea));
+}
+
+function leerTarea_(row, C) {
+  function v(k) { return C[k] === undefined ? null : cell_(row, C[k]); }
+  return {
+    prioridad: prioridadNorm_(v("prioridad")), area: v("area"), tema: v("tema"), tarea: v("tarea"),
+    responsable: v("responsable"), inicio: toIsoDate_(v("inicio")), tiempo: toIsoDate_(v("tiempo")),
+    cierre: toIsoDate_(v("cierre")), estado: v("estado"), obs: v("obs")
+  };
+}
+
+/* "1", "p1", "P1 " -> "P1". Cualquier otra cosa se deja como está. */
+function prioridadNorm_(v) {
+  if (v === null || v === undefined || v === "") return null;
+  var m = String(v).trim().match(/^p?\s*([123])$/i);
+  return m ? "P" + m[1] : String(v).trim();
 }
 
 /* =====================================================================
@@ -390,7 +438,6 @@ function setOverride_(taskId, patch) {
 
 var ESTADO_A_SHEET = { "Por hacer": "Pendiente", "En proceso": "Proceso", "En revisión": "Revisar", "Testear": "Testear", "Completado": "Finalizada" };
 var ESTADOS_SHEET = ["Pendiente", "Proceso", "Revisar", "Testear", "Finalizada"];
-var COLS_02 = { area: 3, tema: 4, tarea: 5, responsable: 6, inicio: 7, cierre: 9, estado: 10, obs: 11 };
 var TITULO_REUNION = "Encuentro I Estado del proceso de trabajo";
 
 /* Mismo id que calcula la web: hash del contenido + contador de repetidas. */
@@ -410,6 +457,7 @@ function procesoLayout_() {
     }
     return -1;
   }
+  var C = colsProceso_(values);
   var iniciativasRow = findRow("INICIATIVAS"), finalizadosRow = findRow("FINALIZADOS"), pendientesRow = findRow("PENDIENTES");
   if (iniciativasRow === -1 || finalizadosRow === -1) {
     throw new Error("No encuentro INICIATIVAS / FINALIZADOS en '" + SHEET_PROCESO + "'");
@@ -420,9 +468,8 @@ function procesoLayout_() {
     var last = fromRow;
     for (var r = fromRow + 1; r < toRow; r++) {
       var row = values[r];
-      var area = cell_(row, 2), tarea = cell_(row, 4);
-      if (!area && !tarea) continue;
-      var key = [source, area || "", cell_(row, 3) || "", tarea || ""].join("|");
+      if (!tieneTarea_(row, C)) continue;
+      var key = [source, cell_(row, C.area) || "", cell_(row, C.tema) || "", cell_(row, C.tarea) || ""].join("|");
       seen[key] = (seen[key] || 0) + 1;
       tasks.push({ id: hashId_(key + "#" + seen[key]), row: r + 1, source: source });
       last = r;
@@ -431,7 +478,8 @@ function procesoLayout_() {
   }
   var lastIniciativaRow = scan(iniciativasRow + 2, finIniciativas, "iniciativa");
   var lastFinalizadoRow = scan(finalizadosRow, values.length, "finalizado");
-  return { sheet: sheet, tasks: tasks, lastIniciativaRow: lastIniciativaRow, lastFinalizadoRow: lastFinalizadoRow };
+  return { sheet: sheet, values: values, C: C, cols: colsEscritura_(C), tasks: tasks,
+    lastIniciativaRow: lastIniciativaRow, lastFinalizadoRow: lastFinalizadoRow };
 }
 
 function findTask_(layout, id) {
@@ -453,14 +501,15 @@ function toSheetDate_(iso) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
 }
 
-function writeTaskCells_(sheet, row, fields) {
-  Object.keys(COLS_02).forEach(function (k) {
+function writeTaskCells_(sheet, row, fields, cols) {
+  Object.keys(cols).forEach(function (k) {
     if (fields[k] === undefined) return;
     var v = fields[k];
     if (k === "inicio" || k === "cierre") v = toSheetDate_(v);
     else if (k === "estado") v = ESTADO_A_SHEET[v] || v || "";
+    else if (k === "prioridad") v = prioridadNorm_(v) || "";
     else if (v === null) v = "";
-    sheet.getRange(row, COLS_02[k]).setValue(v);
+    sheet.getRange(row, cols[k]).setValue(v);
   });
 }
 
@@ -495,7 +544,7 @@ function updateTask_(id, fields) {
   var L = procesoLayout_();
   var t = findTask_(L, id);
   if (!t) throw new Error("No encuentro esa tarea en '" + SHEET_PROCESO + "'. Puede haber cambiado en el Sheet: recargá la página.");
-  writeTaskCells_(L.sheet, t.row, fields);
+  writeTaskCells_(L.sheet, t.row, fields, L.cols);
   var row = t.row;
   if (fields.estado !== undefined) {
     var done = fields.estado === "Completado";
@@ -513,7 +562,7 @@ function addTask_(fields) {
   L.sheet.insertRowAfter(after);
   var row = after + 1;
   L.sheet.getRange(row, 1, 1, L.sheet.getMaxColumns()).clearContent();
-  writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields));
+  writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields), L.cols);
   var newId = idAtRow_(row);
   if (fields.link) setOverride_(newId, { link: fields.link });
   return { id: newId };
@@ -633,11 +682,63 @@ function estadoNuevo_(v) {
   return "Pendiente";
 }
 
+var PRIORIDADES_SHEET = ["P1", "P2", "P3"];
+
+/* Prioridad sugerida para una tarea que todavía no la tiene. Misma
+   clasificación por palabras clave que usaba el tablero para agrupar. */
+function prioridadSugerida_(row, C) {
+  function t(k) { return C[k] === undefined ? "" : String(cell_(row, C[k]) || ""); }
+  var s = (t("tema") + " " + t("tarea") + " " + t("area")).toLowerCase();
+  function tiene(lista) {
+    for (var i = 0; i < lista.length; i++) if (s.indexOf(lista[i]) !== -1) return true;
+    return false;
+  }
+  if (tiene(["cliente potenc", "evento", "oilgas", "chatgpt", "expo-logisti", "leads", "comexnp", "competencia",
+    "vender", "funnel", "vaca muerta", "infopymes", "seguidores", "contactar"])) return "P3";
+  if (tiene(["brand nuevo", "logo", "redes sociales", "whatsapp", "email marketing", "google my business",
+    "instagram", "registro de marca", "carpeta institucional", "membretada", "firma de email", "web nueva",
+    "web:", "web i", "lanzamiento", "landing", "identidad visual"])) return "P1";
+  return "P2";
+}
+
+/* Una vez: agrega la columna PRIORIDAD a 02 (antes de AREA), le pone
+   desplegable P1/P2/P3 y completa las tareas que estén sin prioridad. */
+function migrarPrioridad_() {
+  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+  var C = colsProceso_(sheet.getDataRange().getValues());
+  var creada = false;
+  if (C.prioridad === undefined) {
+    var col = C.area + 1; // 1-based: la nueva columna queda donde estaba AREA
+    sheet.insertColumnBefore(col);
+    var filaHeader = C.header + 1;
+    sheet.getRange(filaHeader, col + 1).copyTo(sheet.getRange(filaHeader, col), { formatOnly: true });
+    sheet.getRange(filaHeader, col).setValue("PRIORIDAD");
+    sheet.setColumnWidth(col, 92);
+    creada = true;
+    SpreadsheetApp.flush();
+  }
+  var L = procesoLayout_();
+  if (L.cols.prioridad === undefined) throw new Error("No pude crear la columna PRIORIDAD en '" + SHEET_PROCESO + "'");
+  var regla = SpreadsheetApp.newDataValidation().requireValueInList(PRIORIDADES_SHEET, true).setAllowInvalid(true).build();
+  var puestas = 0, conteo = {};
+  L.tasks.forEach(function (t) {
+    var cell = L.sheet.getRange(t.row, L.cols.prioridad);
+    cell.setDataValidation(regla);
+    var actual = prioridadNorm_(cell.getValue());
+    if (actual) { conteo[actual] = (conteo[actual] || 0) + 1; return; }
+    var sugerida = prioridadSugerida_(L.values[t.row - 1], L.C);
+    cell.setValue(sugerida);
+    conteo[sugerida] = (conteo[sugerida] || 0) + 1;
+    puestas++;
+  });
+  return { columnaCreada: creada, tareas: L.tasks.length, completadas: puestas, conteo: conteo };
+}
+
 /* Una vez: pasa todas las tareas de 02 a los estados nuevos y, si la columna
    ESTADO tiene desplegable, lo deja con esas 5 opciones. */
 function migrarEstados_() {
   var L = procesoLayout_();
-  var col = COLS_02.estado;
+  var col = L.cols.estado;
   var cambios = {};
   L.tasks.forEach(function (t) {
     var cell = L.sheet.getRange(t.row, col);
