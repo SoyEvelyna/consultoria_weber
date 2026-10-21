@@ -39,6 +39,7 @@ var SHEET_ETAPA1 = "01 I Plan de trabajo";
 var SHEET_PROCESO = "02 I Proceso de trabajo";
 var SHEET_OVERRIDES = "WebApp - Overrides";
 var SHEET_NOTES = "WebApp - Notas";
+var SHEET_LOGS = "WebApp - Logs";
 var SHEET_CUSTOM_TASKS = "WebApp - Tareas nuevas";
 var SHEET_MEETINGS = "WebApp - Reuniones";
 
@@ -70,6 +71,7 @@ function doGet(e) {
       seed: readSeed_(),
       overrides: readOverrides_(),
       notes: readSimpleRows_(SHEET_NOTES, ["id", "text", "author", "createdAt"]),
+      logs: readLogs_(),
       customTasks: readSimpleRows_(SHEET_CUSTOM_TASKS,
         ["id", "tarea", "area", "tema", "responsable", "fase", "inicio", "cierre", "estado", "obs", "link", "createdAt"],
         ["inicio", "cierre"]),
@@ -99,6 +101,7 @@ function doPost(e) {
 function handleAction_(action, p) {
   switch (action) {
     case "setOverride": return setOverride_(p.taskId, p.patch || {});
+    case "addLog": return addRow_(SHEET_LOGS, SHEET_SCHEMAS[SHEET_LOGS], p);
     case "addNote": return addRow_(SHEET_NOTES, ["id", "text", "author", "createdAt"],
       Object.assign({ id: "n" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteNote": return deleteRow_(SHEET_NOTES, p.id);
@@ -410,6 +413,7 @@ function prioridadNorm_(v) {
 var SHEET_SCHEMAS = {};
 SHEET_SCHEMAS[SHEET_OVERRIDES] = ["task_id", "estado", "link", "inicio", "cierre", "hidden", "updated_at"];
 SHEET_SCHEMAS[SHEET_NOTES] = ["id", "text", "author", "createdAt"];
+SHEET_SCHEMAS[SHEET_LOGS] = ["id", "ts", "autor", "accion", "tarea", "detalle"];
 SHEET_SCHEMAS[SHEET_CUSTOM_TASKS] = ["id", "tarea", "area", "tema", "responsable", "fase", "inicio", "cierre", "estado", "obs", "link", "createdAt"];
 SHEET_SCHEMAS[SHEET_MEETINGS] = ["id", "fecha", "responsable", "duracion", "resumen", "createdAt"];
 
@@ -452,6 +456,35 @@ function readOverrides_() {
   rows.forEach(function (r) {
     out[r.task_id] = { estado: r.estado, link: r.link, inicio: r.inicio, cierre: r.cierre, hidden: r.hidden === true || r.hidden === "true", updatedAt: r.updated_at };
   });
+  return out;
+}
+
+/* =====================================================================
+   LOGS · registro de ediciones
+   Cada cambio hecho desde la web agrega una fila. Se leen sólo los últimos
+   movimientos: la hoja crece sin tope y el tablero muestra los días recientes.
+   ===================================================================== */
+var LOGS_MAX = 500;
+
+function readLogs_() {
+  var sheet = ss_().getSheetByName(SHEET_LOGS);
+  if (!sheet) return [];
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var cols = SHEET_SCHEMAS[SHEET_LOGS];
+  var desde = Math.max(2, last - LOGS_MAX + 1);
+  var values = sheet.getRange(desde, 1, last - desde + 1, cols.length).getValues();
+  var out = [];
+  for (var r = 0; r < values.length; r++) {
+    if (!cell_(values[r], 0)) continue;
+    var obj = {};
+    for (var c = 0; c < cols.length; c++) {
+      var v = cell_(values[r], c);
+      if (cols[c] === "ts" && v instanceof Date) v = v.toISOString();
+      obj[cols[c]] = (v === null || v === undefined) ? "" : String(v);
+    }
+    out.push(obj);
+  }
   return out;
 }
 
