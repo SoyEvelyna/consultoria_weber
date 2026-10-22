@@ -103,6 +103,9 @@ function handleAction_(action, p) {
     case "setOverride": return setOverride_(p.taskId, p.patch || {});
     case "addLog": return addRow_(SHEET_LOGS, SHEET_SCHEMAS[SHEET_LOGS], p);
     case "quitarOpcion": return quitarOpcion_(p.campo, p.valor);
+    case "setObjetivo": return setObjetivo_(p.texto);
+    case "setPrioridad": return setPrioridad_(p.n, p.texto, p.desc);
+    case "agregarPrioridad": return agregarPrioridad_(p.texto, p.desc);
     case "addNote": return addRow_(SHEET_NOTES, ["id", "text", "author", "createdAt"],
       Object.assign({ id: "n" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteNote": return deleteRow_(SHEET_NOTES, p.id);
@@ -1271,4 +1274,103 @@ function quitarOpcion_(campo, valor) {
       .requireValueInList(h.lista, true).setAllowInvalid(true).build());
   });
   return { quitado: quitar, campo: buscado, hojas: hojas.map(function (h) { return h.hoja; }) };
+}
+
+/* =====================================================================
+   OBJETIVO Y PRIORIDADES, EDITABLES DESDE LA WEB
+   El bloque vive arriba de la hoja de proceso: OBJETIVO 1 con su respuesta
+   dos filas abajo, y PRIORIDADES con una fila numerada por prioridad. El
+   título y la descripción comparten celda, separados por un tab, que es como
+   readSeed_ los viene leyendo desde siempre.
+   ===================================================================== */
+function filaEtiqueta_(values, texto) {
+  var target = String(texto).toUpperCase();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][1] || "").trim().toUpperCase() === target) return i;
+  }
+  return -1;
+}
+
+/* Las filas numeradas del bloque, con la columna donde está su texto. */
+function bloquePrioridades_() {
+  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+  var values = sheet.getDataRange().getValues();
+  var inicio = filaEtiqueta_(values, "PRIORIDADES");
+  var fin = filaEtiqueta_(values, "INICIATIVAS");
+  if (inicio === -1 || fin === -1) {
+    throw new Error("No encuentro PRIORIDADES / INICIATIVAS en '" + SHEET_PROCESO + "'");
+  }
+  var filas = [];
+  for (var r = inicio + 2; r < fin; r++) {
+    var n = cell_(values[r], 1);
+    if (n === null || isNaN(Number(n))) continue;
+    var col = 2;
+    while (col < 6 && cell_(values[r], col) === null) col++;
+    if (col >= 6) col = 2;
+    filas.push({ fila: r, n: Number(n), col: col });
+  }
+  return { sheet: sheet, values: values, inicio: inicio, fin: fin, filas: filas };
+}
+
+function setObjetivo_(texto) {
+  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+  var values = sheet.getDataRange().getValues();
+  var fila = filaEtiqueta_(values, "OBJETIVO 1");
+  if (fila === -1) throw new Error("No encuentro el bloque OBJETIVO 1 en '" + SHEET_PROCESO + "'");
+  sheet.getRange(fila + 3, 2).setValue(String(texto === null || texto === undefined ? "" : texto));
+  return { objetivo: texto || "" };
+}
+
+function setPrioridad_(n, texto, desc) {
+  var num = Number(n);
+  var B = bloquePrioridades_();
+  var fila = null;
+  B.filas.forEach(function (f) { if (f.n === num) fila = f; });
+  if (!fila) throw new Error("No encuentro la prioridad " + num + " en el bloque PRIORIDADES");
+  var partes = [String(texto === null || texto === undefined ? "" : texto).trim()];
+  var d = (desc === null || desc === undefined) ? "" : String(desc).trim();
+  if (d) partes.push(d);
+  B.sheet.getRange(fila.fila + 1, fila.col + 1).setValue(partes.join("\t"));
+  return { n: num, texto: partes[0], desc: d };
+}
+
+/* Suma una prioridad al final del bloque: copia la fila anterior con su
+   formato y sus celdas combinadas, y suma la etiqueta nueva al desplegable
+   de la columna PRIORIDAD. */
+function agregarPrioridad_(texto, desc) {
+  var B = bloquePrioridades_();
+  if (!B.filas.length) throw new Error("No encuentro ninguna prioridad para copiar el formato");
+  var ultima = B.filas[B.filas.length - 1];
+  B.filas.forEach(function (f) { if (f.n > ultima.n) ultima = f; });
+  if (ultima.n >= 9) throw new Error("Ya hay 9 prioridades, que es el máximo que maneja el tablero");
+
+  var filaOrigen = ultima.fila + 1;
+  var filaNueva = filaOrigen + 1;
+  var ancho = Math.max(B.sheet.getLastColumn(), ultima.col + 1);
+  B.sheet.insertRowAfter(filaOrigen);
+  B.sheet.getRange(filaOrigen, 1, 1, ancho).copyTo(B.sheet.getRange(filaNueva, 1, 1, ancho), { formatOnly: true });
+  B.sheet.getRange(filaOrigen, 1, 1, ancho).getMergedRanges().forEach(function (m) {
+    if (m.getNumRows() !== 1) return;
+    B.sheet.getRange(filaNueva, m.getColumn(), 1, m.getNumColumns()).merge();
+  });
+
+  var partes = [String(texto === null || texto === undefined ? "" : texto).trim()];
+  var d = (desc === null || desc === undefined) ? "" : String(desc).trim();
+  if (d) partes.push(d);
+  B.sheet.getRange(filaNueva, 2).setValue(ultima.n + 1);
+  B.sheet.getRange(filaNueva, ultima.col + 1).setValue(partes.join("\t"));
+
+  /* La columna PRIORIDAD tiene que ofrecer la etiqueta nueva. */
+  var etiquetas = [];
+  for (var i = 1; i <= ultima.n + 1; i++) etiquetas.push("P" + i);
+  var values = B.sheet.getDataRange().getValues();
+  var C = colsProceso_(values);
+  if (C.prioridad !== undefined) {
+    var desde = C.header + 2;
+    var regla = SpreadsheetApp.newDataValidation()
+      .requireValueInList(etiquetas, true).setAllowInvalid(true).build();
+    B.sheet.getRange(desde, C.prioridad + 1, Math.max(B.sheet.getMaxRows() - desde + 1, 1), 1)
+      .setDataValidation(regla);
+  }
+  return { n: ultima.n + 1, texto: partes[0], fila: filaNueva, opciones: etiquetas };
 }
