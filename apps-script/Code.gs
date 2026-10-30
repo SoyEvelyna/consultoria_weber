@@ -212,6 +212,13 @@ function readOpciones_() {
    Eso hacía que Weber mostrara 18:16 donde la hoja dice 13:00. */
 function tzHoja_() { return ss_().getSpreadsheetTimeZone(); }
 
+/* A veces el link no está pegado a la celda sino escrito como texto adentro
+   (pasa cuando se copia y pega la reunión a mano). */
+function urlEnTexto_(v) {
+  var m = String(v === null || v === undefined ? "" : v).match(/https?:\/\/[^\s"'<>]+/);
+  return m ? m[0] : "";
+}
+
 function enlaceDeCelda_(filaRica, col) {
   var celda = filaRica && filaRica[col];
   if (!celda) return "";
@@ -249,6 +256,7 @@ function readEtapa1_() {
       resultado: cell_(row, 5),
       obs: cell_(row, 6),
       grabacion: enlaceDeCelda_(ricos[r], 6) || enlaceDeCelda_(ricos[r], 5)
+        || urlEnTexto_(cell_(row, 6)) || urlEnTexto_(cell_(row, 5))
     });
   }
   return out;
