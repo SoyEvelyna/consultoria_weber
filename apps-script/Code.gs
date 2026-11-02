@@ -1114,7 +1114,10 @@ var SHEET_RESUMEN = "WebApp - Resumen";
 function fotoActual_() {
   var seed = readSeed_();
   function tarea(t, seccion, tb) {
-    return { seccion: seccion, trimestre: tb.id, area: t.area, tema: t.tema, tarea: t.tarea,
+    /* "tr" solo para los trimestres que no son el primero: en el primero se
+       sobreentiende, y la foto entra en menos lugar. */
+    var tr = tb.id === TABLEROS[0].id ? undefined : tb.id;
+    return { seccion: seccion, tr: tr, area: t.area, tema: t.tema, tarea: t.tarea,
       responsable: t.responsable, inicio: t.inicio, cierre: t.cierre, estado: t.estado, obs: t.obs };
   }
   /* Todos los trimestres, no solo el primero: si no, lo que se trabaja en el
@@ -1133,19 +1136,37 @@ function fotoActual_() {
   };
 }
 
+/* Una celda aguanta 50.000 caracteres y la foto ya iba por 34.000: crece con
+   cada tarea, porque las finalizadas se acumulan. Asi que se guarda repartida
+   en la fila 1, de A en adelante, y se lee concatenando esa fila. Una foto
+   vieja, entera en A1, sigue leyendose igual. */
+var FOTO_MAX_CELDA = 45000;
+var FOTO_MAX_CELDAS = 20;
+
 function leerFoto_() {
   var sh = ss_().getSheetByName(SHEET_RESUMEN);
   if (!sh) return null;
-  var v = sh.getRange(1, 1).getValue();
-  try { return v ? JSON.parse(v) : null; } catch (err) { return null; }
+  var ancho = Math.max(sh.getLastColumn(), 1);
+  var fila = sh.getRange(1, 1, 1, ancho).getValues()[0];
+  var texto = fila.map(function (v) {
+    return String(v === null || v === undefined ? "" : v);
+  }).join("");
+  try { return texto ? JSON.parse(texto) : null; } catch (err) { return null; }
 }
 
 function guardarFoto_(foto) {
   var texto = JSON.stringify(foto);
-  if (texto.length > 49000) throw new Error("La foto del resumen es demasiado grande para una celda");
+  var partes = [];
+  for (var i = 0; i < texto.length; i += FOTO_MAX_CELDA) partes.push(texto.slice(i, i + FOTO_MAX_CELDA));
+  if (!partes.length) partes = [""];
+  if (partes.length > FOTO_MAX_CELDAS) {
+    throw new Error("La foto del resumen no entra ni en " + FOTO_MAX_CELDAS + " celdas");
+  }
   var ss = ss_();
   var sh = ss.getSheetByName(SHEET_RESUMEN) || ss.insertSheet(SHEET_RESUMEN);
-  sh.getRange(1, 1).setValue(texto);
+  var ancho = Math.max(sh.getLastColumn(), partes.length);
+  sh.getRange(1, 1, 1, ancho).clearContent();
+  sh.getRange(1, 1, 1, partes.length).setValues([partes]);
   sh.getRange(2, 1).setValue("Foto que usa el resumen diario por email. No editar. Última: " + (foto.fecha || nowIso_()));
 }
 
@@ -1153,9 +1174,8 @@ function guardarFoto_(foto) {
    guardada antes de que hubiera trimestres sigue casando y el resumen no
    anuncia las 121 tareas de siempre como nuevas. */
 function claveTarea_(t) {
-  var tb = t && t.trimestre;
-  var pre = (tb && tb !== TABLEROS[0].id) ? tb + "|" : "";
-  return pre + String(t.tarea || "").trim().toLowerCase();
+  var tr = t && t.tr;
+  return (tr ? tr + "|" : "") + String(t.tarea || "").trim().toLowerCase();
 }
 
 function difResumen_(antes, ahora) {
