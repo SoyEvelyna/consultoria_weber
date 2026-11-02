@@ -1113,12 +1113,17 @@ var SHEET_RESUMEN = "WebApp - Resumen";
 
 function fotoActual_() {
   var seed = readSeed_();
-  function tarea(t, seccion) {
-    return { seccion: seccion, area: t.area, tema: t.tema, tarea: t.tarea, responsable: t.responsable,
-      inicio: t.inicio, cierre: t.cierre, estado: t.estado, obs: t.obs };
+  function tarea(t, seccion, tb) {
+    return { seccion: seccion, trimestre: tb.id, area: t.area, tema: t.tema, tarea: t.tarea,
+      responsable: t.responsable, inicio: t.inicio, cierre: t.cierre, estado: t.estado, obs: t.obs };
   }
-  var tareas = seed.iniciativas.map(function (t) { return tarea(t, "iniciativas"); })
-    .concat(seed.finalizados.map(function (t) { return tarea(t, "finalizados"); }));
+  /* Todos los trimestres, no solo el primero: si no, lo que se trabaja en el
+     trimestre en curso no aparece nunca en el resumen. */
+  var tareas = [];
+  (seed.tableros || []).forEach(function (tb) {
+    (tb.iniciativas || []).forEach(function (t) { tareas.push(tarea(t, "iniciativas", tb)); });
+    (tb.finalizados || []).forEach(function (t) { tareas.push(tarea(t, "finalizados", tb)); });
+  });
   return {
     fecha: nowIso_(),
     tareas: tareas,
@@ -1144,7 +1149,14 @@ function guardarFoto_(foto) {
   sh.getRange(2, 1).setValue("Foto que usa el resumen diario por email. No editar. Última: " + (foto.fecha || nowIso_()));
 }
 
-function claveTarea_(t) { return String(t.tarea || "").trim().toLowerCase(); }
+/* El trimestre entra en la clave solo cuando no es el primero, asi la foto
+   guardada antes de que hubiera trimestres sigue casando y el resumen no
+   anuncia las 121 tareas de siempre como nuevas. */
+function claveTarea_(t) {
+  var tb = t && t.trimestre;
+  var pre = (tb && tb !== TABLEROS[0].id) ? tb + "|" : "";
+  return pre + String(t.tarea || "").trim().toLowerCase();
+}
 
 function difResumen_(antes, ahora) {
   var r = { nuevas: [], finalizadas: [], estados: [], otros: [], eliminadas: [], reuniones: [] };
