@@ -37,6 +37,50 @@ function ss_() { return SpreadsheetApp.openById(SHEET_ID); }
 
 var SHEET_ETAPA1 = "01 I Plan de trabajo";
 var SHEET_PROCESO = "02 I Proceso de trabajo";
+
+/* =====================================================================
+   LOS TRIMESTRES DEL TABLERO
+   Cada trimestre tiene su hoja de proceso, con su objetivo, sus prioridades
+   y sus iniciativas. La hoja se busca por el numero con el que empieza su
+   nombre, exigiendo ademas que diga "Proceso": asi "01 I Plan de trabajo"
+   no se cuela.
+
+   El primero va marcado con sinPrefijoEnIds. El id de cada tarea se calcula
+   con su texto, y anteponerle el trimestre a las tareas que ya existen
+   invalidaria todo lo guardado por id (urgencia, links, tareas ocultas).
+   Los trimestres nuevos si llevan prefijo, para que la misma tarea repetida
+   en dos trimestres no comparta id.
+
+   "actual" marca el trimestre en curso: es el que abre el tablero. El que no
+   lo tiene queda guardado y se sigue pudiendo mirar.
+   ===================================================================== */
+var TABLEROS = [
+  { id: "t1", label: "1er Trimestre", sub: "Jul \u2013 Sep", prefijo: "02", sinPrefijoEnIds: true, cerrado: true },
+  { id: "t2", label: "2do Trimestre", sub: "Oct \u2013 Dic", prefijo: "03", actual: true }
+];
+
+/* Sin id, el primero: lo que usan las migraciones de una vez y la lectura de
+   los desplegables, que siempre miraron la hoja 02. */
+function tablero_(id) {
+  if (!id) return TABLEROS[0];
+  for (var i = 0; i < TABLEROS.length; i++) if (TABLEROS[i].id === id) return TABLEROS[i];
+  throw new Error("Trimestre desconocido: " + id);
+}
+
+function hojaProceso_(t) {
+  var hojas = ss_().getSheets();
+  for (var i = 0; i < hojas.length; i++) {
+    var nombre = String(hojas[i].getName() || "").trim();
+    if (nombre.indexOf(t.prefijo) === 0 && sinAcentos_(nombre).indexOf("PROCESO") !== -1) return hojas[i];
+  }
+  throw new Error("No encuentro la hoja de proceso del " + t.label +
+    " (tiene que empezar con " + t.prefijo + " y decir Proceso)");
+}
+
+/* La fuente con la que se arma el id. El primer trimestre va sin prefijo. */
+function fuenteIds_(t, source) {
+  return t.sinPrefijoEnIds ? source : t.id + "|" + source;
+}
 var SHEET_OVERRIDES = "WebApp - Overrides";
 var SHEET_NOTES = "WebApp - Notas";
 var SHEET_LOGS = "WebApp - Logs";
@@ -108,9 +152,9 @@ function handleAction_(action, p) {
     case "updateAgenda": return updateRow_(SHEET_AGENDA, p.id, p.patch || {});
     case "deleteAgenda": return deleteRow_(SHEET_AGENDA, p.id);
     case "quitarOpcion": return quitarOpcion_(p.campo, p.valor);
-    case "setObjetivo": return setObjetivo_(p.texto);
-    case "setPrioridad": return setPrioridad_(p.n, p.texto, p.desc);
-    case "agregarPrioridad": return agregarPrioridad_(p.texto, p.desc);
+    case "setObjetivo": return setObjetivo_(p.tablero, p.texto);
+    case "setPrioridad": return setPrioridad_(p.tablero, p.n, p.texto, p.desc);
+    case "agregarPrioridad": return agregarPrioridad_(p.tablero, p.texto, p.desc);
     case "addNote": return addRow_(SHEET_NOTES, ["id", "text", "author", "createdAt"],
       Object.assign({ id: "n" + Date.now(), createdAt: nowIso_() }, p));
     case "deleteNote": return deleteRow_(SHEET_NOTES, p.id);
@@ -125,9 +169,9 @@ function handleAction_(action, p) {
     case "migrarEstados": return migrarEstados_();
     case "migrarPrioridad": return migrarPrioridad_();
     case "migrarLinks": return migrarLinks_();
-    case "updateTask": return updateTask_(p.id, p.fields || {});
-    case "addTask": return addTask_(p.fields || {});
-    case "deleteTask": return deleteTask_(p.id);
+    case "updateTask": return updateTask_(p.tablero, p.id, p.fields || {});
+    case "addTask": return addTask_(p.tablero, p.fields || {});
+    case "deleteTask": return deleteTask_(p.tablero, p.id);
     case "addMeetingSheet": return addMeetingSheet_(p);
     case "deleteMeetingSheet": return deleteMeetingSheet_(p);
     case "migrarWebApp": return migrarWebAppAlSheet_();
@@ -178,7 +222,26 @@ function cell_(row, idx) {
    ===================================================================== */
 
 function readSeed_() {
-  var proceso = readProceso_();
+  var tableros = TABLEROS.map(function (t) {
+    var datos = readProceso_(t);
+    datos.id = t.id;
+    datos.label = t.label;
+    datos.sub = t.sub || "";
+    datos.cerrado = !!t.cerrado;
+    datos.actual = !!t.actual;
+    datos.sinPrefijo = !!t.sinPrefijoEnIds;
+    return datos;
+  });
+  /* Los campos de arriba son los del primer trimestre: asi una web que
+     todavia no sabe de trimestres sigue viendo lo mismo que antes. */
+  var proceso = {
+    objetivo: tableros[0].objetivo,
+    prioridades: tableros[0].prioridades,
+    iniciativas: tableros[0].iniciativas,
+    finalizados: tableros[0].finalizados,
+    backlog: tableros[0].backlog,
+    tableros: tableros
+  };
   proceso.etapa1 = readEtapa1_();
   proceso.opciones = readOpciones_();
   return proceso;
@@ -282,7 +345,7 @@ function colsProceso_(values) {
       return map;
     }
   }
-  throw new Error("No encuentro el encabezado (AREA / TEMA / ESTADO) en '" + SHEET_PROCESO + "'");
+  throw new Error("No encuentro el encabezado (AREA / TEMA / ESTADO) en la hoja de proceso");
 }
 
 function sinAcentos_(v) {
@@ -300,9 +363,8 @@ function colsEscritura_(C) {
   return out;
 }
 
-function readProceso_() {
-  var sheet = ss_().getSheetByName(SHEET_PROCESO);
-  if (!sheet) throw new Error("No encuentro la hoja '" + SHEET_PROCESO + "'");
+function readProceso_(t) {
+  var sheet = hojaProceso_(t || TABLEROS[0]);
   var values = sheet.getDataRange().getValues();
 
   function findRow(colIdx, text) {
@@ -318,7 +380,7 @@ function readProceso_() {
   var iniciativasRow = findRow(1, "INICIATIVAS");
   var finalizadosRow = findRow(1, "FINALIZADOS");
   if ([objetivoRow, prioridadesRow, iniciativasRow, finalizadosRow].indexOf(-1) !== -1) {
-    throw new Error("No encuentro alguna de las secciones (OBJETIVO 1 / PRIORIDADES / INICIATIVAS / FINALIZADOS) en '" + SHEET_PROCESO + "'. ¿Se movieron o renombraron?");
+    throw new Error("No encuentro alguna de las secciones (OBJETIVO 1 / PRIORIDADES / INICIATIVAS / FINALIZADOS) en '" + sheet.getName() + "'. ¿Se movieron o renombraron?");
   }
   // PENDIENTES es opcional: se eliminó del Sheet, pero si vuelve se lee igual.
   var pendientesRow = findRow(1, "PENDIENTES");
@@ -645,9 +707,11 @@ function hashId_(str) {
   return "t" + h.toString(36);
 }
 
-/* Ubica cada tarea de 02 (id, fila, sección) con el mismo recorrido que readProceso_. */
-function procesoLayout_() {
-  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+/* Ubica cada tarea de la hoja de un trimestre (id, fila, sección) con el
+   mismo recorrido que readProceso_. Sin argumento, el primer trimestre. */
+function procesoLayout_(tbId) {
+  var t = tablero_(tbId);
+  var sheet = hojaProceso_(t);
   var values = sheet.getDataRange().getValues();
   function findRow(text) {
     for (var i = 0; i < values.length; i++) {
@@ -658,7 +722,7 @@ function procesoLayout_() {
   var C = colsProceso_(values);
   var iniciativasRow = findRow("INICIATIVAS"), finalizadosRow = findRow("FINALIZADOS"), pendientesRow = findRow("PENDIENTES");
   if (iniciativasRow === -1 || finalizadosRow === -1) {
-    throw new Error("No encuentro INICIATIVAS / FINALIZADOS en '" + SHEET_PROCESO + "'");
+    throw new Error("No encuentro INICIATIVAS / FINALIZADOS en '" + sheet.getName() + "'");
   }
   var finIniciativas = pendientesRow !== -1 ? pendientesRow : finalizadosRow;
   var tasks = [], seen = {};
@@ -667,7 +731,7 @@ function procesoLayout_() {
     for (var r = fromRow + 1; r < toRow; r++) {
       var row = values[r];
       if (!tieneTarea_(row, C)) continue;
-      var key = [source, cell_(row, C.area) || "", cell_(row, C.tema) || "", cell_(row, C.tarea) || ""].join("|");
+      var key = [fuenteIds_(t, source), cell_(row, C.area) || "", cell_(row, C.tema) || "", cell_(row, C.tarea) || ""].join("|");
       seen[key] = (seen[key] || 0) + 1;
       tasks.push({ id: hashId_(key + "#" + seen[key]), row: r + 1, source: source });
       last = r;
@@ -676,7 +740,7 @@ function procesoLayout_() {
   }
   var lastIniciativaRow = scan(iniciativasRow + 2, finIniciativas, "iniciativa");
   var lastFinalizadoRow = scan(finalizadosRow, values.length, "finalizado");
-  return { sheet: sheet, values: values, C: C, cols: colsEscritura_(C), tasks: tasks,
+  return { tablero: t, sheet: sheet, values: values, C: C, cols: colsEscritura_(C), tasks: tasks,
     lastIniciativaRow: lastIniciativaRow, lastFinalizadoRow: lastFinalizadoRow };
 }
 
@@ -685,8 +749,8 @@ function findTask_(layout, id) {
   return null;
 }
 
-function idAtRow_(row) {
-  var L = procesoLayout_();
+function idAtRow_(tbId, row) {
+  var L = procesoLayout_(tbId);
   for (var i = 0; i < L.tasks.length; i++) if (L.tasks[i].row === row) return L.tasks[i].id;
   return null;
 }
@@ -797,10 +861,10 @@ function migrateOverride_(oldId, newId, fields) {
   }
 }
 
-function updateTask_(id, fields) {
-  var L = procesoLayout_();
+function updateTask_(tbId, id, fields) {
+  var L = procesoLayout_(tbId);
   var t = findTask_(L, id);
-  if (!t) throw new Error("No encuentro esa tarea en '" + SHEET_PROCESO + "'. Puede haber cambiado en el Sheet: recargá la página.");
+  if (!t) throw new Error("No encuentro esa tarea en '" + L.sheet.getName() + "'. Puede haber cambiado en el Sheet: recargá la página.");
   var perdidos = writeTaskCells_(L.sheet, t.row, fields, L.cols);
   var row = t.row;
   if (fields.estado !== undefined) {
@@ -808,25 +872,25 @@ function updateTask_(id, fields) {
     if (done && t.source === "iniciativa") row = moveRow_(L.sheet, row, L.lastFinalizadoRow);
     else if (!done && t.source === "finalizado") row = moveRow_(L.sheet, row, L.lastIniciativaRow);
   }
-  var newId = idAtRow_(row);
+  var newId = idAtRow_(tbId, row);
   migrateOverride_(id, newId, fields);
   return { id: newId, enObservaciones: perdidos };
 }
 
-function addTask_(fields) {
-  var L = procesoLayout_();
+function addTask_(tbId, fields) {
+  var L = procesoLayout_(tbId);
   var after = fields.estado === "Completado" ? L.lastFinalizadoRow : L.lastIniciativaRow;
   L.sheet.insertRowAfter(after);
   var row = after + 1;
   L.sheet.getRange(row, 1, 1, L.sheet.getMaxColumns()).clearContent();
   var perdidos = writeTaskCells_(L.sheet, row, Object.assign({ estado: "Por hacer" }, fields), L.cols);
-  return { id: idAtRow_(row), enObservaciones: perdidos };
+  return { id: idAtRow_(tbId, row), enObservaciones: perdidos };
 }
 
-function deleteTask_(id) {
-  var L = procesoLayout_();
+function deleteTask_(tbId, id) {
+  var L = procesoLayout_(tbId);
   var t = findTask_(L, id);
-  if (!t) throw new Error("No encuentro esa tarea en '" + SHEET_PROCESO + "'. Recargá la página.");
+  if (!t) throw new Error("No encuentro esa tarea en '" + L.sheet.getName() + "'. Recargá la página.");
   L.sheet.deleteRow(t.row);
   deleteRow_(SHEET_OVERRIDES, id);
   return { deleted: id };
@@ -919,8 +983,8 @@ function migrarWebAppAlSheet_() {
       inicio: c.inicio, cierre: c.cierre, estado: c.estado || "Por hacer", obs: c.obs };
     if (c.link) fields.link = c.link;
     var id = String(c.id), res;
-    if (id.charAt(0) === "x" && findTask_(procesoLayout_(), id.slice(1))) res = updateTask_(id.slice(1), fields);
-    else res = addTask_(fields);
+    if (id.charAt(0) === "x" && findTask_(procesoLayout_(), id.slice(1))) res = updateTask_(null, id.slice(1), fields);
+    else res = addTask_(null, fields);
     deleteRow_(SHEET_CUSTOM_TASKS, id);
     log.push(id + " -> " + res.id);
   });
@@ -1360,13 +1424,13 @@ function filaEtiqueta_(values, texto) {
 }
 
 /* Las filas numeradas del bloque, con la columna donde está su texto. */
-function bloquePrioridades_() {
-  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+function bloquePrioridades_(tbId) {
+  var sheet = hojaProceso_(tablero_(tbId));
   var values = sheet.getDataRange().getValues();
   var inicio = filaEtiqueta_(values, "PRIORIDADES");
   var fin = filaEtiqueta_(values, "INICIATIVAS");
   if (inicio === -1 || fin === -1) {
-    throw new Error("No encuentro PRIORIDADES / INICIATIVAS en '" + SHEET_PROCESO + "'");
+    throw new Error("No encuentro PRIORIDADES / INICIATIVAS en '" + sheet.getName() + "'");
   }
   var filas = [];
   for (var r = inicio + 2; r < fin; r++) {
@@ -1380,18 +1444,18 @@ function bloquePrioridades_() {
   return { sheet: sheet, values: values, inicio: inicio, fin: fin, filas: filas };
 }
 
-function setObjetivo_(texto) {
-  var sheet = ss_().getSheetByName(SHEET_PROCESO);
+function setObjetivo_(tbId, texto) {
+  var sheet = hojaProceso_(tablero_(tbId));
   var values = sheet.getDataRange().getValues();
   var fila = filaEtiqueta_(values, "OBJETIVO 1");
-  if (fila === -1) throw new Error("No encuentro el bloque OBJETIVO 1 en '" + SHEET_PROCESO + "'");
+  if (fila === -1) throw new Error("No encuentro el bloque OBJETIVO 1 en '" + sheet.getName() + "'");
   sheet.getRange(fila + 3, 2).setValue(String(texto === null || texto === undefined ? "" : texto));
   return { objetivo: texto || "" };
 }
 
-function setPrioridad_(n, texto, desc) {
+function setPrioridad_(tbId, n, texto, desc) {
   var num = Number(n);
-  var B = bloquePrioridades_();
+  var B = bloquePrioridades_(tbId);
   var fila = null;
   B.filas.forEach(function (f) { if (f.n === num) fila = f; });
   if (!fila) throw new Error("No encuentro la prioridad " + num + " en el bloque PRIORIDADES");
@@ -1405,8 +1469,8 @@ function setPrioridad_(n, texto, desc) {
 /* Suma una prioridad al final del bloque: copia la fila anterior con su
    formato y sus celdas combinadas, y suma la etiqueta nueva al desplegable
    de la columna PRIORIDAD. */
-function agregarPrioridad_(texto, desc) {
-  var B = bloquePrioridades_();
+function agregarPrioridad_(tbId, texto, desc) {
+  var B = bloquePrioridades_(tbId);
   if (!B.filas.length) throw new Error("No encuentro ninguna prioridad para copiar el formato");
   var ultima = B.filas[B.filas.length - 1];
   B.filas.forEach(function (f) { if (f.n > ultima.n) ultima = f; });

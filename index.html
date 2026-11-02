@@ -245,6 +245,13 @@ a{color:inherit}
 .ag-col.-cal .cal-ev .t{display:none}
 .ag-col.-cal .cal-dia{min-width:0}
 .cal-pie{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.4}
+/* Selector de trimestre: el que esta en curso y los que quedaron guardados. */
+.tablero-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+.tablero-btn{border:2px solid var(--ink);background:var(--card);padding:8px 16px;cursor:pointer;
+  text-align:left;line-height:1.25;color:var(--ink)}
+.tablero-btn .tt{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.tablero-btn .sb{display:block;font-size:10px;font-weight:600;opacity:.65;letter-spacing:.04em;margin-top:2px}
+.tablero-btn[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
 /* Las que vienen solas del Google Calendar llevan su sello. */
 .cal-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;border:1.5px solid var(--ink);padding:1px 5px;margin-left:8px;vertical-align:1px;color:var(--ink)}
 .prox .cal-tag{border-color:var(--paper);color:var(--paper);opacity:.7}
@@ -511,6 +518,7 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
     <span class="yo-chip">Soy <select id="quien-soy" title="Con este nombre se firman tus cambios en la pestaña Logs"></select></span>
   </div>
 
+  <div class="tablero-bar" id="tablero-bar"></div>
   <nav class="tabs" id="tabs" role="tablist"></nav>
   <main id="view" role="tabpanel"></main>
 </div>
@@ -539,7 +547,7 @@ a.deliv-link:hover,a.entregable-link:hover{color:var(--hazard);text-decoration-c
   /* Sello de la versión publicada. GitHub Pages cachea el HTML y el navegador
      se queda con una copia vieja: la página compara este sello contra el del
      servidor y, si quedó atrás, se recarga sola una vez. */
-  window.APP_VERSION = "20261030-1424";
+  window.APP_VERSION = "20261102-1841";
   window.WEBER_GAS_CONFIG = {
     url: "https://script.google.com/macros/s/AKfycbxQn1UMPNlyHvCaCF2G8feMI6Li6OMqS0AJRB_4LtZs_twSqstmQR4z4bNqCAV3ItyGog/exec",
     token: "OKSiDEIeEQ55k3kCXS3cOL0f53TNBR9U"
@@ -556,7 +564,89 @@ let RAW = {"etapa1": [{"fecha": "2026-06-04", "hs": 2, "tarea": "Workshop I Esta
    ===================================================================== */
 let OBJETIVO = "Que Weber comience a mostrarse, comunicar y posicionarse en el mercado: pasar de ser una marca invisible puertas afuera a tener presencia ordenada, consistente y con un sistema comercial documentado que sostenga el crecimiento.";
 let PRIORIDADES = [{"n": 1, "tt": "Lanzar la nueva identidad de marca, interna y externa", "desc": "Que Weber se vea, se sienta y se comunique de forma coherente en todos los puntos de contacto — adentro de la empresa y de cara al mercado. Web, presencia digital, materiales internos y un evento de lanzamiento forman parte de esto."}, {"n": 2, "tt": "Documentar el sistema comercial completo por nicho", "desc": "Entender bien quién es cada nicho, qué características tiene, qué materiales comerciales necesita y cómo llegar a ellos. Esta base se construye en julio-agosto, antes de salir a buscar clientes."}, {"n": 3, "tt": "Posicionar a Weber con acciones comerciales concretas", "desc": "Con la identidad lanzada y la base comercial lista, salir al mercado con las primeras acciones reales de contacto y captación por nicho — recién en septiembre."}];
-/* Grupos del tablero = prioridades de la hoja 02 (columna PRIORIDAD). */
+/* =====================================================================
+   TRIMESTRES
+   Cada trimestre tiene su hoja de proceso, con su objetivo, sus prioridades
+   y sus iniciativas. El contenido de arriba (OBJETIVO, PRIORIDADES,
+   RAW.iniciativas, RAW.finalizados) es siempre el del trimestre abierto:
+   cambiar de trimestre lo vuelve a volcar y rearma las tareas.
+
+   El plan de trabajo con fechas (hoja 01), las reuniones y la agenda son
+   del cliente y no del trimestre, asi que se ven igual en los dos.
+   ===================================================================== */
+let TABLEROS_DATA = [
+  {id:"t1", label:"1er Trimestre", sub:"Jul \u2013 Sep", cerrado:true, sinPrefijo:true,
+   objetivo:OBJETIVO, prioridades:PRIORIDADES, iniciativas:RAW.iniciativas, finalizados:RAW.finalizados},
+  {id:"t2", label:"2do Trimestre", sub:"Oct \u2013 Dic", actual:true,
+   objetivo:"Convertir la presencia y las herramientas construidas en oportunidades comerciales concretas, mediante la activaci\u00f3n de canales, el seguimiento de prospectos y una medici\u00f3n b\u00e1sica de resultados.",
+   prioridades:[
+     {n:1, tt:"Activar la captaci\u00f3n", desc:"Publicar y validar la landing de log\u00edstica; completar la secuencia de email comercial; activar el primer env\u00edo y el seguimiento de respuestas con Gerencia. El recorrido buscado es: primer contacto \u2192 visita a la web \u2192 inter\u00e9s/consulta \u2192 reuni\u00f3n comercial \u2192 oportunidad registrada."},
+     {n:2, tt:"Posicionar con evidencia", desc:"Convertir los casos reales y el conocimiento t\u00e9cnico de Weber en piezas de autoridad que expliquen situaciones, decisiones tomadas y resultados, con validaci\u00f3n de confidencialidad. Reutilizar ese material en LinkedIn, web y conversaciones de venta."},
+     {n:3, tt:"Medir y acompa\u00f1ar la conversi\u00f3n", desc:"Registrar fuente, empresa, necesidad, responsable, etapa y pr\u00f3xima acci\u00f3n de cada oportunidad. Instalar revisi\u00f3n de resultados para detectar qu\u00e9 mensajes y segmentos generan conversaciones que valga la pena continuar."}
+   ],
+   iniciativas:[], finalizados:[]}
+];
+/* El trimestre en curso es el que abre el tablero, salvo que se haya elegido
+   otro: eso queda guardado en este navegador. */
+function tableroPorDefecto_(){
+  const act = TABLEROS_DATA.find(t=>t.actual);
+  return act ? act.id : TABLEROS_DATA[TABLEROS_DATA.length-1].id;
+}
+let tableroActivo = (function(){
+  try{ return localStorage.getItem(localKey("tablero")) || tableroPorDefecto_(); }
+  catch(e){ return tableroPorDefecto_(); }
+})();
+function tableroData(){
+  return TABLEROS_DATA.find(t=>t.id===tableroActivo) || TABLEROS_DATA[0];
+}
+/* El id de cada tarea se calcula con su texto. El trimestre marcado como
+   sinPrefijo no lo lleva: ponerselo invalidaria todo lo que ya esta guardado
+   por id (urgencia, links, tareas ocultas). Los demas si, para que la misma
+   tarea repetida en dos trimestres no comparta id. Solo las tareas que salen
+   de la hoja del trimestre; el plan con fechas es comun. */
+const FUENTES_TRIMESTRE = ["iniciativa", "finalizado"];
+function fuenteIds_(source){
+  if(FUENTES_TRIMESTRE.indexOf(source) === -1) return source;
+  const d = tableroData();
+  return d.sinPrefijo ? source : d.id + "|" + source;
+}
+function setTablero(id){
+  if(!TABLEROS_DATA.some(t=>t.id===id)) return;
+  tableroActivo = id;
+  try{ localStorage.setItem(localKey("tablero"), id); }catch(e){}
+  aplicarTablero_();
+  render();
+}
+function aplicarTablero_(){
+  const d = tableroData();
+  RAW.iniciativas = d.iniciativas || [];
+  RAW.finalizados = d.finalizados || [];
+  OBJETIVO = d.objetivo || "";
+  PRIORIDADES = d.prioridades || [];
+  buildFaseMeta_();   /* los grupos del tablero son las prioridades de este trimestre */
+  rebuildTasks_();
+}
+function renderTableroBar(){
+  const bar = document.getElementById("tablero-bar");
+  if(!bar) return;
+  bar.innerHTML = "";
+  /* Con un solo trimestre la barra sobra. */
+  if(TABLEROS_DATA.length < 2) return;
+  TABLEROS_DATA.forEach(t=>{
+    const n = (t.iniciativas||[]).length + (t.finalizados||[]).length;
+    const pie = [t.sub, n + (n===1 ? " tarea" : " tareas")].concat(t.cerrado ? ["cerrado"] : []).filter(Boolean);
+    const b = document.createElement("button");
+    b.className = "tablero-btn";
+    b.type = "button";
+    b.setAttribute("aria-pressed", t.id===tableroActivo ? "true" : "false");
+    b.innerHTML = '<span class="tt">' + escHtml(t.label) + '</span>' +
+                  '<span class="sb">' + escHtml(pie.join(" \u00b7 ")) + '</span>';
+    b.onclick = ()=> setTablero(t.id);
+    bar.appendChild(b);
+  });
+}
+
+/* Grupos del tablero = prioridades de la hoja del trimestre (columna PRIORIDAD). */
 const FASE_IDS = [1,2,3,4];
 let FASE_META = {};
 function buildFaseMeta_(){
@@ -788,7 +878,7 @@ function hashId(str){
   return "t"+h.toString(36);
 }
 function mk(base, source, fase){
-  const key = [source, base.area||"", base.tema||"", base.tarea||""].join("|");
+  const key = [fuenteIds_(source), base.area||"", base.tema||"", base.tarea||""].join("|");
   idSeen[key] = (idSeen[key]||0) + 1;
   const id = hashId(key + "#" + idSeen[key]);
   const estadoOriginal = base.estado || null;
@@ -801,7 +891,7 @@ let TASKS = [];
    el id cambia cuando la tarea pasa a Finalizadas. */
 const RECIENTES_MS = 3 * 60 * 1000;
 const recientes = new Map();
-function claveTarea_(t){ return String(t.tema||"") + "|" + String(t.tarea||""); }
+function claveTarea_(t){ return tableroActivo + "|" + String(t.tema||"") + "|" + String(t.tarea||""); }
 function recordarCambio_(t, fields){
   const previo = recientes.get(claveTarea_(t));
   recientes.set(claveTarea_(t), {fields: Object.assign({}, previo && previo.fields, fields), ts: Date.now()});
@@ -844,7 +934,9 @@ function rebuildTasks_(){
   });
   aplicarRecientes_();
 }
-rebuildTasks_(); // construye TASKS a partir de RAW, incluido en este archivo
+aplicarTablero_(); /* vuelca el trimestre abierto en RAW y construye TASKS.
+   Va aca y no arriba porque recien en este punto estan declarados TASKS y
+   los demas estados que usa rebuildTasks_. */
 
 /* Las tareas del Sheet editadas desde la web se guardan como copia en
    "WebApp - Tareas nuevas" con id "x"+id original (y la original se oculta),
@@ -1112,14 +1204,14 @@ function sheetTaskEdit(t, fields){
   if(ov){ delete ov.estado; delete ov.inicio; delete ov.cierre; }
   if(fields.link!==undefined) overridesState[t.id] = Object.assign({}, overridesState[t.id], {link: fields.link});
   render();
-  return sheetWrite("updateTask", {id: t.id, fields});
+  return sheetWrite("updateTask", {tablero: tableroActivo, id: t.id, fields});
 }
 
 function sheetDeleteTask(t){
   registrarLog_("Borró la tarea", t.tarea, "");
   overridesState[t.id] = Object.assign({}, overridesState[t.id], {hidden:true});
   render();
-  return sheetWrite("deleteTask", {id: t.id});
+  return sheetWrite("deleteTask", {tablero: tableroActivo, id: t.id});
 }
 
 function setEstado(t, estado){
@@ -1149,7 +1241,7 @@ async function addCustomTask(data){
   if(sheetMode()){
     customTasksState.unshift(Object.assign({}, data, {id:"tmp"+Date.now()}));
     render();
-    return sheetWrite("addTask", {fields: data});
+    return sheetWrite("addTask", {tablero: tableroActivo, fields: data});
   }
   const local = Object.assign({id:"c"+Date.now()}, data, {createdAt:new Date().toISOString()});
   customTasksState.unshift(local);
@@ -1407,14 +1499,20 @@ async function gasWriteUna_(action, payload){
 function gasApplySeed_(seed){
   if(!seed) return;
   RAW.etapa1 = seed.etapa1 || [];
-  RAW.iniciativas = seed.iniciativas || [];
-  RAW.finalizados = seed.finalizados || [];
   RAW.backlog = seed.backlog || [];
-  if(seed.objetivo) OBJETIVO = seed.objetivo;
-  if(seed.prioridades && seed.prioridades.length) PRIORIDADES = seed.prioridades;
   if(seed.opciones) SHEET_OPCIONES = seed.opciones;
-  buildFaseMeta_();
-  rebuildTasks_();
+  if(seed.tableros && seed.tableros.length){
+    TABLEROS_DATA = seed.tableros;
+    if(!TABLEROS_DATA.some(t=>t.id===tableroActivo)) tableroActivo = tableroPorDefecto_();
+  } else {
+    /* Backend viejo, sin trimestres: lo que venga es el unico que hay. */
+    TABLEROS_DATA = [{id:"t1", label:"1er Trimestre", sinPrefijo:true, actual:true,
+      objetivo: seed.objetivo || OBJETIVO,
+      prioridades: (seed.prioridades && seed.prioridades.length) ? seed.prioridades : PRIORIDADES,
+      iniciativas: seed.iniciativas || [], finalizados: seed.finalizados || []}];
+    tableroActivo = "t1";
+  }
+  aplicarTablero_();
 }
 
 function gasOverridesDoc_(){
@@ -1810,6 +1908,7 @@ function renderTabs(){
 }
 
 function render(){
+  renderTableroBar();
   renderTabs();
   const root = document.getElementById("view");
   root.innerHTML = "";
@@ -2929,7 +3028,7 @@ function guardarObjetivo(texto){
   registrarLog_("Cambió el objetivo", limpio.slice(0, 140), "");
   OBJETIVO = limpio;
   render();
-  if(sheetMode()) return sheetWrite("setObjetivo", {texto: limpio});
+  if(sheetMode()) return sheetWrite("setObjetivo", {tablero: tableroActivo, texto: limpio});
 }
 
 function guardarPrioridad(n, texto, desc){
@@ -2943,7 +3042,7 @@ function guardarPrioridad(n, texto, desc){
     String(p.tt || "").trim() && String(p.tt).trim() !== tt ? "Antes: " + p.tt : "");
   p.tt = tt; p.desc = d;
   render();
-  if(sheetMode()) return sheetWrite("setPrioridad", {n: Number(n), texto: tt, desc: d});
+  if(sheetMode()) return sheetWrite("setPrioridad", {tablero: tableroActivo, n: Number(n), texto: tt, desc: d});
 }
 
 /* Suma una prioridad al final del bloque. La fila nueva la inserta la hoja,
@@ -2956,7 +3055,7 @@ function nuevaPrioridad(){
     return;
   }
   registrarLog_("Agregó una prioridad", texto, "");
-  return sheetWrite("agregarPrioridad", {texto: texto, desc: ""});
+  return sheetWrite("agregarPrioridad", {tablero: tableroActivo, texto: texto, desc: ""});
 }
 
 function pintarPrioridadesEditables(cont){
